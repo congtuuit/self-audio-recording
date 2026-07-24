@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VoiceCraft - Studio Thu Âm & Transcript Cá Nhân</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="22"/>
+          </svg>
+        </div>
+        <div>
+          <h1>VoiceCraft Studio</h1>
+          <p class="subtitle">Công cụ thu âm & chuyển giọng nói thành văn bản trên máy cá nhân</p>
+        </div>
+      </div>
+      <div class="status-badge" id="statusBadge">
+        <span class="status-dot"></span>
+        <span id="statusText">Sẵn sàng</span>
+      </div>
+    </header>
+
+    <!-- Main Grid Layout -->
+    <main class="main-grid">
+      <!-- Left Column: Controls & Visualizer -->
+      <section class="card recorder-card">
+        <div class="card-header">
+          <h2>🎙️ Thu âm Micro</h2>
+          <div class="timer" id="timerDisplay">00:00:00</div>
+        </div>
+
+        <!-- Custom Name Input & Settings -->
+        <div class="recording-settings">
+          <div class="input-group">
+            <label for="audioSourceSelect">Nguồn âm thanh thu:</label>
+            <select id="audioSourceSelect">
+              <option value="mic" selected>🎙️ Chỉ Micro (Giọng nói của bạn)</option>
+              <option value="system">🔊 Chỉ Âm thanh hệ thống (Loa/Máy tính)</option>
+              <option value="both">🎙️+🔊 Cả Micro & Âm thanh hệ thống (Hỗn hợp)</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label for="recordingName">Tên bản ghi (tùy chọn):</label>
+            <input type="text" id="recordingName" placeholder="VD: Ghi_chu_cuoc_hop" autocomplete="off">
+          </div>
+          <div class="input-group">
+            <label for="languageSelect">Ngôn ngữ Transcript:</label>
+            <select id="languageSelect">
+              <option value="vi-VN" selected>🇻🇳 Tiếng Việt (vi-VN)</option>
+              <option value="en-US">🇺🇸 Tiếng Anh (en-US)</option>
+              <option value="ja-JP">🇯🇵 Tiếng Nhật (ja-JP)</option>
+              <option value="zh-CN">🇨🇳 Tiếng Trung (zh-CN)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Audio Waveform Visualizer -->
+        <div class="visualizer-container">
+          <canvas id="visualizerCanvas" width="600" height="120"></canvas>
+        </div>
+
+        <!-- Action Controls -->
+        <div class="controls-bar">
+          <button id="btnStart" class="btn btn-primary btn-record">
+            <span class="btn-icon">🔴</span> Bắt đầu Thu âm
+          </button>
+          <button id="btnPause" class="btn btn-warning" disabled>
+            <span class="btn-icon">⏸️</span> Tạm dừng
+          </button>
+          <button id="btnResume" class="btn btn-info" style="display: none;">
+            <span class="btn-icon">⏯️</span> Tiếp tục
+          </button>
+          <button id="btnStop" class="btn btn-danger" disabled>
+            <span class="btn-icon">⏹️</span> Dừng & Lưu (.WAV + .TXT)
+          </button>
+        </div>
+      </section>
+
+      <!-- Right Column: Live Transcript Panel -->
+      <section class="card transcript-card">
+        <div class="card-header">
+          <h2>📝 Transcript Real-time</h2>
+          <div class="card-actions">
+            <button id="btnCopyTranscript" class="btn-sm btn-ghost" title="Copy văn bản">
+              📋 Copy
+            </button>
+            <button id="btnClearTranscript" class="btn-sm btn-ghost" title="Xóa màn hình">
+              🗑️ Xóa
+            </button>
+          </div>
+        </div>
+        <div class="transcript-box" id="transcriptBox">
+          <p class="placeholder-text">Chữ thu âm từ giọng nói của bạn sẽ tự động xuất hiện tại đây khi bạn bắt đầu nói...</p>
+        </div>
+        <div class="transcript-footer">
+          <span class="speech-api-status" id="speechStatus">⚡ Web Speech API Active</span>
+          <span id="charCounter">0 ký tự</span>
+        </div>
+      </section>
+    </main>
+
+    <!-- Bottom Section: Saved Recordings Library -->
+    <section class="card library-card">
+      <div class="card-header">
+        <h2>📁 Danh sách các bản ghi đã lưu (.wav & .txt)</h2>
+        <button id="btnRefreshLibrary" class="btn-sm btn-outline">🔄 Làm mới danh sách</button>
+      </div>
+
+      <div class="recordings-list-container" id="recordingsList">
+        <div class="loading-spinner">Đang tải danh sách bản ghi...</div>
+      </div>
+    </section>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

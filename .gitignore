@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Recording files (Bỏ qua các file thu âm thực tế của cá nhân)
+recordings/*
+!recordings/.gitkeep
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# System & OS Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE & Temporary Files
+.vscode/
+.idea/
+.brain/
