@@ -59,7 +59,7 @@ export const LessonCard: React.FC<LessonCardProps> = ({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
             <span className="text-sm font-semibold tracking-tight text-white truncate block max-w-[170px]" title={recording.filename}>
-              {recording.filename.replace('.wav', '')}
+              {recording.id}
             </span>
             {isRecent && (
               <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-accent/20 text-accent font-bold uppercase tracking-wider">
@@ -151,7 +151,7 @@ export const LessonCard: React.FC<LessonCardProps> = ({
         <div className="flex items-center gap-1.5">
           <a
             href={`/recordings/${recording.filename}`}
-            download={recording.filename}
+            download={`${recording.id}.wav`}
             onClick={(e) => e.stopPropagation()}
             className="p-1.5 rounded-md hover:bg-cardSecondary text-textMuted hover:text-white transition-colors"
             title="Tải tệp WAV"

@@ -4,6 +4,7 @@ import { WaveformVisualizer } from './WaveformVisualizer';
 import { LiveTranscriptPanel } from './LiveTranscriptPanel';
 import { QuickAIAnalysis } from './QuickAIAnalysis';
 import { Recording, AIScore } from '../../types';
+import { useDialog } from '../../context/DialogContext';
 
 interface RecordingStudioProps {
   isRecording: boolean;
@@ -30,6 +31,7 @@ export const RecordingStudio: React.FC<RecordingStudioProps> = ({
   isSaving,
   recordings
 }) => {
+  const { alert: showAlert } = useDialog();
   const [liveSpeechText, setLiveSpeechText] = useState('');
   const [latestAnalysis, setLatestAnalysis] = useState<AIScore | null>(null);
 
@@ -81,7 +83,11 @@ export const RecordingStudio: React.FC<RecordingStudioProps> = ({
 
   const handleCopyTranscript = () => {
     navigator.clipboard.writeText(liveSpeechText);
-    alert('Đã copy live transcript!');
+    showAlert({
+      title: 'Clipboard',
+      message: 'Đã copy live transcript!',
+      type: 'success'
+    });
   };
 
   return (

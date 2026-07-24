@@ -5,6 +5,10 @@ import io
 import wave
 import speech_recognition as sr
 import soundfile as sf
+import socket
+
+# Set default network timeout to 15 seconds to prevent hanging on Google Speech API throttling
+socket.setdefaulttimeout(15)
 
 # Fix UTF-8 encoding on Windows console
 if hasattr(sys.stdout, 'reconfigure'):
@@ -63,11 +67,11 @@ def transcribe_audio(wav_path, lang='en-US'):
             audio_obj = recognizer.record(src)
 
         try:
-            chunk_text = recognizer.recognize_google(audio_obj, language=lang, timeout=10)
+            chunk_text = recognizer.recognize_google(audio_obj, language=lang)
         except Exception:
             alt_lang = 'en-US' if lang.startswith('vi') else 'vi-VN'
             try:
-                chunk_text = recognizer.recognize_google(audio_obj, language=alt_lang, timeout=10)
+                chunk_text = recognizer.recognize_google(audio_obj, language=alt_lang)
             except Exception:
                 chunk_text = ""
 

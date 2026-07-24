@@ -4,7 +4,7 @@ import { CheckCircle2, AlertTriangle, HelpCircle } from 'lucide-react';
 import { WordTimestamp } from '../../types';
 
 interface FeedbackPanelProps {
-  words: WordTimestamp[];
+  words: (WordTimestamp & { score?: number })[];
   shadowingAttempted: boolean;
 }
 
@@ -12,19 +12,14 @@ export const FeedbackPanel: React.FC<FeedbackPanelProps> = ({
   words,
   shadowingAttempted
 }) => {
-  // Giả lập gán điểm phát âm cho từng từ sau khi ghi âm shadowing xong
+  // Điểm phát âm thực tế được truyền từ Workspace
   const evaluatedWords = React.useMemo(() => {
     if (!shadowingAttempted) return words;
 
-    // Sinh điểm ngẫu nhiên cho từng từ (đúng > 80, sai < 60)
-    return words.map((w, idx) => {
-      // Giả sử có khoảng 1-2 từ đọc sai ngẫu nhiên trong bài để tạo trực quan
-      const shouldBeWrong = idx === 2 || idx === 6;
-      return {
-        ...w,
-        score: shouldBeWrong ? Math.floor(Math.random() * 20) + 40 : Math.floor(Math.random() * 20) + 80
-      };
-    });
+    return words.map((w) => ({
+      ...w,
+      score: w.score !== undefined ? w.score : 90
+    }));
   }, [words, shadowingAttempted]);
 
   const correctCount = evaluatedWords.filter(w => !w.score || w.score >= 80).length;

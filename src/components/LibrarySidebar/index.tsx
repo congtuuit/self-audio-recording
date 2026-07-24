@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Search, SlidersHorizontal, BookOpen, Star, RefreshCw } from 'lucide-react';
 import { LessonCard } from './LessonCard';
 import { Recording } from '../../types';
+import { useDialog } from '../../context/DialogContext';
 
 interface LibrarySidebarProps {
   recordings: Recording[];
@@ -21,6 +22,7 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
   onToggleFavorite,
   activeLessonId
 }) => {
+  const { alert: showAlert, confirm: showConfirm } = useDialog();
   const [search, setSearch] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'favorites'>('all');
   const [sortBy, setSortBy] = useState<'newest' | 'score'>('newest');
@@ -58,11 +60,22 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
   }, [recordings, search, filterMode, sortBy]);
 
   const handleDelete = async (id: string) => {
-    if (confirm('Bạn có chắc muốn xóa bản ghi này cùng dữ liệu transcript đi kèm không?')) {
+    const hasConfirmed = await showConfirm({
+      title: 'Xóa bản ghi',
+      message: 'Bạn có chắc muốn xóa bản ghi này cùng toàn bộ thư mục và tệp cấu hình đi kèm không?',
+      confirmLabel: 'Xóa',
+      cancelLabel: 'Hủy'
+    });
+
+    if (hasConfirmed) {
       try {
         await onDelete(id);
       } catch (err: unknown) {
-        alert(err instanceof Error ? err.message : String(err));
+        showAlert({
+          title: 'Lỗi khi xóa',
+          message: err instanceof Error ? err.message : String(err),
+          type: 'error'
+        });
       }
     }
   };

@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Keyboard, Volume2, Key, Sliders } from 'lucide-react';
+import { useDialog } from '../context/DialogContext';
 
 interface SettingsDialogProps {
   isOpen: boolean;
@@ -8,6 +9,50 @@ interface SettingsDialogProps {
 }
 
 export const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose }) => {
+  const { alert: showAlertDialog } = useDialog();
+  const [settings, setSettings] = React.useState({
+    whisperKey: '',
+    sampleRate: 44100,
+    autoGain: true
+  });
+
+  // Load settings
+  React.useEffect(() => {
+    if (isOpen) {
+      try {
+        const stored = localStorage.getItem('voicecraft_settings');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          setSettings({
+            whisperKey: parsed.whisperKey || '',
+            sampleRate: parsed.sampleRate ? Number(parsed.sampleRate) : 44100,
+            autoGain: parsed.autoGain !== undefined ? Boolean(parsed.autoGain) : true
+          });
+        }
+      } catch (err) {
+        console.error('Error loading settings:', err);
+      }
+    }
+  }, [isOpen]);
+
+  const handleSave = async () => {
+    try {
+      localStorage.setItem('voicecraft_settings', JSON.stringify(settings));
+      onClose();
+      await showAlertDialog({
+        title: 'Settings',
+        message: 'Đã lưu cấu hình cài đặt!',
+        type: 'success'
+      });
+    } catch (err) {
+      showAlertDialog({
+        title: 'Settings Error',
+        message: 'Lỗi khi lưu cài đặt',
+        type: 'error'
+      });
+    }
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -78,7 +123,11 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose 
                 <div className="space-y-3">
                   <div className="flex flex-col gap-1.5">
                     <label className="text-xs text-textSecondary">Default Capture Sample Rate</label>
-                    <select className="w-full bg-cardSecondary border border-borderCustom rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white">
+                    <select
+                      value={settings.sampleRate}
+                      onChange={(e) => setSettings(prev => ({ ...prev, sampleRate: Number(e.target.value) }))}
+                      className="w-full bg-cardSecondary border border-borderCustom rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white"
+                    >
                       <option value="44100">44.1 kHz (CD Quality)</option>
                       <option value="48000">48.0 kHz (Studio Quality)</option>
                       <option value="22050">22.05 kHz (Low bandwidth)</option>
@@ -86,7 +135,12 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose 
                   </div>
                   <div className="flex items-center justify-between p-1">
                     <span className="text-sm text-textSecondary">Auto-gain control (Microphone)</span>
-                    <input type="checkbox" defaultChecked className="w-4 h-4 accent-accent cursor-pointer" />
+                    <input
+                      type="checkbox"
+                      checked={settings.autoGain}
+                      onChange={(e) => setSettings(prev => ({ ...prev, autoGain: e.target.checked }))}
+                      className="w-4 h-4 accent-accent cursor-pointer"
+                    />
                   </div>
                 </div>
               </div>
@@ -101,6 +155,8 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose 
                     <label className="text-xs text-textSecondary">OpenAI Whisper Cloud Key (Optional)</label>
                     <input
                       type="password"
+                      value={settings.whisperKey}
+                      onChange={(e) => setSettings(prev => ({ ...prev, whisperKey: e.target.value }))}
                       placeholder="sk-................................"
                       className="w-full bg-cardSecondary border border-borderCustom rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent text-white placeholder-textMuted"
                     />
@@ -119,10 +175,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose 
                 Close
               </button>
               <button
-                onClick={() => {
-                  alert("Settings saved!");
-                  onClose();
-                }}
+                onClick={handleSave}
                 className="px-4 py-2 text-sm font-semibold rounded-lg bg-accent hover:bg-accent/80 text-white shadow-glow transition-colors"
               >
                 Save Settings

@@ -126,12 +126,21 @@ export function useRecordings(): UseRecordingsReturn {
 
       reader.onloadend = async () => {
         try {
+          let whisperKey = '';
+          try {
+            const stored = localStorage.getItem('voicecraft_settings');
+            if (stored) {
+              whisperKey = JSON.parse(stored).whisperKey || '';
+            }
+          } catch (e) {}
+
           const base64Audio = reader.result as string;
           const payload = {
             audioBase64: base64Audio,
             transcript,
             customName,
-            language: lang
+            language: lang,
+            whisperKey
           };
 
           const response = await fetch('/api/save-recording', {
@@ -176,10 +185,18 @@ export function useRecordings(): UseRecordingsReturn {
   // Transcribe lại với ngôn ngữ khác
   const reTranscribe = async (id: string, lang: string) => {
     try {
+      let whisperKey = '';
+      try {
+        const stored = localStorage.getItem('voicecraft_settings');
+        if (stored) {
+          whisperKey = JSON.parse(stored).whisperKey || '';
+        }
+      } catch (e) {}
+
       const response = await fetch(`/api/transcribe/${id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ language: lang })
+        body: JSON.stringify({ language: lang, whisperKey })
       });
       const data = await response.json();
 

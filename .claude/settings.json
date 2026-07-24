@@ -1,32 +1,27 @@
 {
   "permissions": {
     "allow": [
-      "PowerShell(python transcribe.py \"recordings/REC_recording_1784895886_20260724123019.wav\" en-US)",
-      "PowerShell(python -c \"import speech_recognition; import soundfile; print\\('OK: speech_recognition', speech_recognition.__version__\\); print\\('OK: soundfile', soundfile.__version__\\)\")",
-      "PowerShell(python -c \"import soundfile as sf; data, rate = sf.read\\('recordings/REC_recording_1784895886_20260724123019.wav'\\); print\\('Shape:', data.shape, 'Rate:', rate, 'Duration:', len\\(data\\)/rate\\)\")",
-      "Skill(e2e-test-runner)",
-      "Skill(e2e-test-runner:*)",
-      "Bash(node server.js)",
-      "PowerShell(node server.js)",
-      "PowerShell(python test_full_flow.py)",
-      "PowerShell(Stop-Process -Id \\(Get-NetTCPConnection -LocalPort 3000\\).OwningProcess -Force -ErrorAction SilentlyContinue)",
-      "PowerShell(python transcribe.py recordings/REC_recording_1784892649_20260724113152.wav en-US)",
-      "PowerShell(npm run build)",
-      "Workflow(e2e-test-runner)",
-      "PowerShell(Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue)",
-      "PowerShell(Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue)",
-      "PowerShell(Get-Process -Name node -ErrorAction SilentlyContinue)",
-      "PowerShell(Get-Process node -ErrorAction SilentlyContinue)",
-      "PowerShell(Stop-Process -Force)",
-      "PowerShell(Get-CimInstance Win32_Process -Filter \"Name = 'node.exe'\")",
-      "Bash(netstat -ano)",
-      "PowerShell(Get-Process -Id 20212)",
-      "PowerShell(Stop-Process -Id 20212 -Force)"
+      "PowerShell(*)",
+      "Bash(*)",
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+      "TaskStop",
+      "Skill(*)",
+      "Python(*)",
+      "Node(*)",
+      "Npm(*)"
     ],
+    "defaultMode": "bypassPermissions",
     "additionalDirectories": [
-      "D:\\git\\self-audio-recording\\recordings"
+      "D:\\git\\self-audio-recording\\recordings",
+      "d:\\git\\self-audio-recording\\.claude",
+      "C:\\Users\\tu.vancong\\.claude\\plans"
     ]
   },
+  "skipDangerousModePermissionPrompt": true,
   "commands": {
     "npm start": {
       "approved": true
@@ -37,5 +32,27 @@
     "python test_full_flow.py": {
       "approved": true
     }
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f .graphify/graph.json ] && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"graphify: knowledge graph at .graphify/. For focused questions, run `graphify query \\\"<question>\\\"` (scoped subgraph, usually much smaller than GRAPH_REPORT.md) instead of grepping raw files. Read GRAPH_REPORT.md only for broad architecture context.\"}}' || true"
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "HIT=$(node -e \"var chunks=[];process.stdin.on('data',function(c){chunks.push(c);});process.stdin.on('end',function(){try{var d=JSON.parse(Buffer.concat(chunks).toString());var t=d.tool_input||d;var s=(String(t.file_path||'')+' '+String(t.pattern||'')+String(t.path||'')).toLowerCase().replace(/\\\\\\\\\\\\\\\\/g,'/');var exts=['.py','.js','.ts','.tsx','.jsx','.go','.rs','.java','.rb','.c','.h','.cpp','.hpp','.cs','.kt','.swift','.php','.lua','.sh','.md','.rst','.txt','.mdx'];if(!s.includes('.graphify/')&&!s.includes('graphify-out/')&&exts.some(function(e){return s.includes(e);})){process.stdout.write('1');}}catch(e){}});\" 2>/dev/null || true); if [ \"$HIT\" = 1 ] && [ -f .graphify/graph.json ]; then echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"graphify: knowledge graph at .graphify/. For codebase questions, run `graphify query \\\"<question>\\\"` (scoped subgraph) instead of reading source files one by one. Read raw files to modify specific code or debug.\"}}'; fi || true"
+          }
+        ]
+      }
+    ]
   }
 }

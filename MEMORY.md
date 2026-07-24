@@ -3,9 +3,11 @@
 Danh sách thông tin ghi nhớ về dự án dùng để tra cứu nhanh khi bảo trì, phát triển hoặc tối ưu mã nguồn.
 
 ## 📚 Memory Files
-- [Tổng quan dự án & Cấu trúc API](C:/Users/tu.vancong/.claude/projects/d--git-self-audio-recording/memory/project-overview.md) — Kiến trúc hệ thống, backend Node.js, Frontend Glassmorphism và các API endpoints.
-- [Bộ Nhận Diện Giọng Nói Python](C:/Users/tu.vancong/.claude/projects/d--git-self-audio-recording/memory/python-transcription-engine.md) — Cách transcribe.py hoạt động, cơ chế bóc tách mốc thời gian từ tương đối.
-- [Tính Năng Học Tiếng Anh Tương Tác](C:/Users/tu.vancong/.claude/projects/d--git-self-audio-recording/memory/learning-features.md) — Chi tiết về Karaoke Sync, Click-to-Seek, Shadowing Loop và Dictionary Lookup ở Client.
+- [Cấu trúc thư mục ghi âm](.claude/memory/folder-based-recordings.md) — Cấu trúc lưu trữ bản ghi âm mới dưới dạng thư mục đóng gói (audio.wav + meta.json).
+- [Tổng quan dự án & Cấu trúc API](.claude/memory/project-overview.md) — Kiến trúc hệ thống, backend Node.js, Frontend Glassmorphism và các API endpoints.
+- [Bộ Nhận Diện Giọng Nói Python](.claude/memory/python-transcription-engine.md) — Cách transcribe.py hoạt động, cơ chế bóc tách mốc thời gian từ tương đối.
+- [Tính Năng Học Tiếng Anh Tương Tác](.claude/memory/learning-features.md) — Chi tiết về Karaoke Sync, Click-to-Seek, Shadowing Loop và Dictionary Lookup ở Client.
+- [Hệ thống Hộp thoại Modal Tùy chỉnh](.claude/memory/custom-dialog-modal-system.md) — Modal/Dialog dạng Glassmorphic thay thế hoàn toàn alert và prompt.
 
 ## 🤖 Custom Agents
 - **audio-expert** (`.claude/agents/audio-expert.md`) — Xử lý và tối ưu các nghiệp vụ liên quan đến file âm thanh, Python STT, thuật toán chunking, chuyển đổi mô hình nhận dạng giọng nói.

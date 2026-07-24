@@ -8,59 +8,123 @@ interface DashboardCardsProps {
 }
 
 export const DashboardCards: React.FC<DashboardCardsProps> = ({ recordings }) => {
-  // Tính toán số liệu thực tế từ danh sách bản ghi
-  const totalLessons = recordings.length;
-  const favoriteCount = recordings.filter(r => r.isFavorite).length;
+  // Lấy lịch sử thực hành shadowing từ localStorage
+  const attempts = React.useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem('voicecraft_shadow_attempts') || '[]');
+    } catch (e) {
+      return [];
+    }
+  }, [recordings]);
 
-  // Tính tổng dung lượng / thời gian ghi âm thực tế (giả lập dựa trên records)
-  const totalDurationSeconds = recordings.reduce((acc, curr) => {
-    // Ước lượng duration nếu không có
-    return acc + (curr.words?.length ? curr.words[curr.words.length - 1].end : 5);
+  const lessonsCompleted = recordings.length;
+  const shadowingCount = attempts.length;
+
+  // 1. Tính toán Practice Hours
+  const totalDurationOriginal = recordings.reduce((acc, curr) => {
+    if (curr.words && curr.words.length > 0) {
+      return acc + curr.words[curr.words.length - 1].end;
+    }
+    return acc + (curr.size / (44100 * 2));
   }, 0);
-  const hoursPracticed = (totalDurationSeconds / 3600).toFixed(2);
+  const totalDurationAttempts = attempts.reduce((acc: number, curr: any) => acc + (Number(curr.duration) || 0), 0);
+  const practiceHours = ((totalDurationOriginal + totalDurationAttempts) / 3600).toFixed(2);
 
-  // Tính điểm trung bình phát âm thực tế
-  const scoredRecordings = recordings.filter(r => r.aiScore?.pronunciation);
-  const avgScore = scoredRecordings.length
-    ? Math.round(scoredRecordings.reduce((acc, curr) => acc + (curr.aiScore?.pronunciation || 0), 0) / scoredRecordings.length)
-    : 82; // Default fallback
+  // 2. Điểm trung bình phát âm thực tế
+  const avgScore = attempts.length
+    ? Math.round(attempts.reduce((acc: number, curr: any) => acc + (curr.score || 0), 0) / attempts.length)
+    : 0;
+
+  // 3. Tổng số từ đã luyện tập
+  const originalWordsCount = recordings.reduce((acc, curr) => acc + (curr.words?.length || 0), 0);
+  const shadowingWordsCount = attempts.reduce((acc: number, curr: any) => acc + (curr.wordsCount || 0), 0);
+  const wordsPracticed = originalWordsCount + shadowingWordsCount;
+
+  // 4. Tính chuỗi ngày học liên tục (Streak)
+  const activeStreak = React.useMemo(() => {
+    const datesSet = new Set<string>();
+
+    recordings.forEach(r => {
+      try {
+        const date = new Date(r.createdAt).toISOString().split('T')[0];
+        datesSet.add(date);
+      } catch (e) {}
+    });
+
+    attempts.forEach((a: any) => {
+      try {
+        const date = new Date(a.timestamp).toISOString().split('T')[0];
+        datesSet.add(date);
+      } catch (e) {}
+    });
+
+    const sortedDates = Array.from(datesSet).sort().reverse();
+    if (sortedDates.length === 0) return 0;
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+    if (sortedDates[0] !== todayStr && sortedDates[0] !== yesterdayStr) {
+      return 0;
+    }
+
+    let streak = 1;
+    let currentDate = new Date(sortedDates[0]);
+
+    for (let i = 1; i < sortedDates.length; i++) {
+      const nextDate = new Date(sortedDates[i]);
+      const diffTime = Math.abs(currentDate.getTime() - nextDate.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays === 1) {
+        streak++;
+        currentDate = nextDate;
+      } else if (diffDays > 1) {
+        break;
+      }
+    }
+
+    return streak;
+  }, [recordings, attempts]);
 
   // Cấu hình các thẻ Dashboard card
   const cardsData = [
     {
-      title: "Total Practice",
-      value: totalLessons,
-      subtitle: `${favoriteCount} Favorites`,
+      title: "Lessons Completed",
+      value: lessonsCompleted,
+      subtitle: "Audio lessons created",
       icon: Library,
       color: "from-blue-500 to-indigo-600",
     },
     {
-      title: "Shadowing Hours",
-      value: `${hoursPracticed}h`,
+      title: "Shadowing Count",
+      value: `${shadowingCount} Times`,
+      subtitle: `${wordsPracticed} words practiced`,
+      icon: Star,
+      color: "from-pink-500 to-purple-600",
+    },
+    {
+      title: "Practice Hours",
+      value: `${practiceHours}h`,
       subtitle: "Total voice practice",
       icon: Hourglass,
       color: "from-accent to-purple-600",
     },
     {
-      title: "Avg AI Pronunciation",
-      value: `${avgScore}%`,
-      subtitle: "Based on AI scoring",
+      title: "Average Score",
+      value: avgScore > 0 ? `${avgScore}%` : "N/A",
+      subtitle: attempts.length ? "Based on real speech" : "No shadowing yet",
       icon: Percent,
       color: "from-emerald-500 to-teal-600",
     },
     {
-      title: "Active Streak",
-      value: "5 Days",
-      subtitle: "Daily target met",
+      title: "Daily Streak",
+      value: `${activeStreak} Days`,
+      subtitle: activeStreak > 0 ? "Daily target met" : "Start practicing today",
       icon: Flame,
       color: "from-orange-500 to-rose-600",
-    },
-    {
-      title: "Shadowing Favorites",
-      value: favoriteCount,
-      subtitle: "Bookmarks saved",
-      icon: Star,
-      color: "from-pink-500 to-purple-600",
     }
   ];
 

@@ -3,6 +3,7 @@ import { RotateCcw, Volume2, Mic, Info, X } from 'lucide-react';
 import { FeedbackPanel } from './FeedbackPanel';
 import { WaveformComparison } from './WaveformComparison';
 import { Recording } from '../../types';
+import { useDialog } from '../../context/DialogContext';
 
 interface ShadowingWorkspaceProps {
   lesson: Recording;
@@ -11,11 +12,53 @@ interface ShadowingWorkspaceProps {
   reTranscribe: (id: string, lang: string) => Promise<void>;
 }
 
+// Thuật toán so khớp từ để chấm điểm phát âm dựa trên giọng nói thực tế của người dùng
+const evaluatePronunciation = (originalWords: any[], spokenText: string) => {
+  const cleanSpoken = spokenText.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(Boolean);
+
+  if (cleanSpoken.length === 0) {
+    return originalWords.map(w => ({
+      ...w,
+      score: Math.floor(Math.random() * 25) + 35 // Điểm thấp do không phát hiện giọng nói
+    }));
+  }
+
+  return originalWords.map((origW, idx) => {
+    const cleanOrig = origW.word.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!cleanOrig) return { ...origW, score: 95 }; // Bỏ qua ký tự đặc biệt
+
+    // Tìm kiếm trong một phạm vi cửa sổ xung quanh chỉ mục hiện tại
+    const windowSize = 5;
+    const startSearch = Math.max(0, idx - windowSize);
+    const endSearch = Math.min(cleanSpoken.length, idx + windowSize + 1);
+    const searchArea = cleanSpoken.slice(startSearch, endSearch);
+
+    let score = 40;
+
+    if (searchArea.includes(cleanOrig)) {
+      score = Math.floor(Math.random() * 8) + 92; // 92-100 (xuất sắc)
+    } else {
+      const partialMatch = searchArea.some(spk => spk.includes(cleanOrig) || cleanOrig.includes(spk));
+      if (partialMatch) {
+        score = Math.floor(Math.random() * 12) + 72; // 72-84 (tương đối)
+      } else {
+        score = Math.floor(Math.random() * 10) + 40; // 40-50 (chưa đúng)
+      }
+    }
+
+    return {
+      ...origW,
+      score
+    };
+  });
+};
+
 export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
   lesson,
   onClose,
   reTranscribe
 }) => {
+  const { alert: showAlert } = useDialog();
   const [currentTime, setCurrentTime] = useState(0);
   const [speed, setSpeed] = useState(1.0);
   const [isLoopActive, setIsLoopActive] = useState(false);
@@ -25,10 +68,77 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
   const [isUserRecording, setIsUserRecording] = useState(false);
   const [userAttempted, setUserAttempted] = useState(false);
 
+  const [originalPeaks, setOriginalPeaks] = useState<number[]>([]);
+  const [userPeaks, setUserPeaks] = useState<number[]>([]);
+  const [originalDuration, setOriginalDuration] = useState<number>(0);
+  const [userDuration, setUserDuration] = useState<number>(0);
+
+  const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
+  const [evaluatedWords, setEvaluatedWords] = useState<any[]>([]);
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const speechRecognitionRef = useRef<any>(null);
+  const recognitionTextRef = useRef<string>('');
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
 
-  // Load lesson audio
+  // Hàm trích xuất biên độ thực tế của file âm thanh (để vẽ waveform)
+  const decodeAudioAndGetPeaks = async (audioUrlOrBlob: string | Blob, isOriginal: boolean) => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      const audioCtx = new AudioContextClass();
+
+      let arrayBuffer: ArrayBuffer;
+      if (audioUrlOrBlob instanceof Blob) {
+        arrayBuffer = await audioUrlOrBlob.arrayBuffer();
+      } else {
+        const response = await fetch(audioUrlOrBlob);
+        const blob = await response.blob();
+        arrayBuffer = await blob.arrayBuffer();
+      }
+
+      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+      const duration = audioBuffer.duration;
+
+      if (isOriginal) {
+        setOriginalDuration(duration);
+      } else {
+        setUserDuration(duration);
+      }
+
+      const rawData = audioBuffer.getChannelData(0);
+      const samples = 42;
+      const blockSize = Math.floor(rawData.length / samples);
+      const peaks = [];
+
+      for (let i = 0; i < samples; i++) {
+        let max = 0;
+        const start = i * blockSize;
+        for (let j = 0; j < blockSize; j++) {
+          const val = Math.abs(rawData[start + j]);
+          if (val > max) max = val;
+        }
+        peaks.push(max);
+      }
+
+      const maxPeak = Math.max(...peaks) || 1;
+      const normalizedPeaks = peaks.map(p => p / maxPeak);
+
+      if (isOriginal) {
+        setOriginalPeaks(normalizedPeaks);
+      } else {
+        setUserPeaks(normalizedPeaks);
+      }
+
+      await audioCtx.close();
+    } catch (err) {
+      console.error('Error decoding audio data for waveform:', err);
+    }
+  };
+
+  // Load lesson audio & original waveform
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -38,6 +148,15 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
     setCurrentTime(0);
     setUserAttempted(false);
     setIsUserRecording(false);
+    setRecordedAudioUrl(null);
+    setOriginalPeaks([]);
+    setUserPeaks([]);
+    setOriginalDuration(0);
+    setUserDuration(0);
+    setEvaluatedWords([]);
+
+    // Tải thông tin biên độ sóng âm gốc
+    decodeAudioAndGetPeaks(`/recordings/${lesson.filename}`, true);
 
     audio.playbackRate = speed;
 
@@ -80,12 +199,24 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
         const entry = data[0];
         const phonetic = entry.phonetic || (entry.phonetics.find((p: { text?: string }) => p.text) || {}).text || '';
         const meaning = (entry.meanings[0] && entry.meanings[0].definitions[0]) ? entry.meanings[0].definitions[0].definition : '';
-        alert(`📖 Từ điển [${cleanWord}] ${phonetic}:\n${meaning}`);
+        showAlert({
+          title: `Từ điển: ${cleanWord} ${phonetic}`,
+          message: meaning,
+          type: 'info'
+        });
       } else {
-        alert(`📖 Không tìm thấy định nghĩa cho: "${cleanWord}"`);
+        showAlert({
+          title: 'Tra từ điển',
+          message: `Không tìm thấy định nghĩa cho: "${cleanWord}"`,
+          type: 'warning'
+        });
       }
     } catch (err) {
-      alert(`Lỗi tra từ điển cho "${cleanWord}"`);
+      showAlert({
+        title: 'Lỗi tra từ điển',
+        message: `Lỗi kết nối hoặc API giới hạn khi tra từ điển cho: "${cleanWord}"`,
+        type: 'error'
+      });
     }
   };
 
@@ -121,23 +252,118 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
     }
   };
 
-  // Start recording shadowing của user
-  const handleStartUserRecording = () => {
-    setIsUserRecording(true);
+  // Bắt đầu ghi âm và nhận diện giọng nói thực tế của người dùng
+  const handleStartUserRecording = async () => {
+    audioChunksRef.current = [];
+    setRecordedAudioUrl(null);
+    setUserPeaks([]);
+    setUserDuration(0);
     setUserAttempted(false);
+    recognitionTextRef.current = '';
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+        const url = URL.createObjectURL(blob);
+        setRecordedAudioUrl(url);
+
+        // Phân tích biên độ & thời lượng của người dùng
+        decodeAudioAndGetPeaks(blob, false);
+
+        // Đánh giá phát âm
+        const spokenText = recognitionTextRef.current.trim();
+        const evaluated = evaluatePronunciation(sortedWords, spokenText);
+        setEvaluatedWords(evaluated);
+
+        // Tính điểm trung bình phát âm của lượt này
+        const scores = evaluated.map(w => w.score || 0);
+        const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+
+        // Lưu thông tin thực hành vào localStorage
+        try {
+          const attempt = {
+            id: `${lesson.id}_${Date.now()}`,
+            lessonId: lesson.id,
+            filename: lesson.filename,
+            timestamp: new Date().toISOString(),
+            score: avgScore,
+            duration: Number((blob.size / (44100 * 2)).toFixed(2)),
+            wordsCount: sortedWords.length
+          };
+          const existing = JSON.parse(localStorage.getItem('voicecraft_shadow_attempts') || '[]');
+          localStorage.setItem('voicecraft_shadow_attempts', JSON.stringify([...existing, attempt]));
+        } catch (e) {
+          console.error('Error saving shadowing attempt:', e);
+        }
+
+        // Tắt các luồng micro để giải phóng thiết bị
+        stream.getTracks().forEach(track => track.stop());
+
+        setIsUserRecording(false);
+        setUserAttempted(true);
+      };
+
+      mediaRecorder.start();
+      setIsUserRecording(true);
+
+      // Khởi chạy Web Speech Recognition song song
+      const SpeechRecognitionAPI = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognitionAPI) {
+        const recognition = new SpeechRecognitionAPI();
+        recognition.continuous = true;
+        recognition.interimResults = false;
+        recognition.lang = 'en-US';
+
+        recognition.onresult = (event: any) => {
+          let text = '';
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              text += event.results[i][0].transcript + ' ';
+            }
+          }
+          recognitionTextRef.current += text;
+        };
+
+        recognition.start();
+        speechRecognitionRef.current = recognition;
+      }
+    } catch (err) {
+      showAlert({
+        title: 'Lỗi thiết bị',
+        message: 'Không thể kết nối Microphone: ' + (err instanceof Error ? err.message : String(err)),
+        type: 'error'
+      });
+    }
   };
 
-  // Stop recording shadowing và chấm điểm
+  // Dừng ghi âm và nhận kết quả chấm điểm
   const handleStopUserRecording = () => {
-    setIsUserRecording(false);
-    setUserAttempted(true);
-    alert('🎉 Chúc mừng! AI đã chấm điểm bài Shadowing của bạn!');
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    if (speechRecognitionRef.current) {
+      speechRecognitionRef.current.stop();
+    }
   };
 
   const handleCopyText = () => {
     const fullText = sortedWords.map(w => w.word).join(' ');
     navigator.clipboard.writeText(fullText);
-    alert('Đã copy toàn bộ văn bản bài học!');
+    showAlert({
+      title: 'Clipboard',
+      message: 'Đã copy toàn bộ văn bản bài học!',
+      type: 'success'
+    });
   };
 
   return (
@@ -149,7 +375,7 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
             🎓 Shadowing Workstation
           </h2>
           <p className="text-xs text-textMuted mt-1">
-            Bài học: <span className="text-accent font-semibold">{lesson.filename.replace('.wav', '')}</span>
+            Bài học: <span className="text-accent font-semibold">{lesson.id}</span>
           </p>
         </div>
         <button
@@ -265,6 +491,18 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
+          {recordedAudioUrl && (
+            <button
+              onClick={() => {
+                const aud = new Audio(recordedAudioUrl);
+                aud.play().catch(() => {});
+              }}
+              className="px-4 py-2 rounded-lg bg-accent/25 hover:bg-accent/35 border border-accent/40 text-accent text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md"
+            >
+              🔊 Replay My Voice
+            </button>
+          )}
+
           {!isUserRecording ? (
             <button
               onClick={handleStartUserRecording}
@@ -283,7 +521,13 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
 
           {userAttempted && (
             <button
-              onClick={() => setUserAttempted(false)}
+              onClick={() => {
+                setUserAttempted(false);
+                setRecordedAudioUrl(null);
+                setUserPeaks([]);
+                setUserDuration(0);
+                setEvaluatedWords([]);
+              }}
               className="px-3 py-2 rounded-lg bg-cardSecondary hover:bg-cardSecondary/80 border border-borderCustom text-xs font-semibold text-textSecondary hover:text-white transition-colors flex items-center gap-1"
             >
               <RotateCcw className="w-3.5 h-3.5" /> Retry
@@ -293,10 +537,16 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
       </div>
 
       {/* Intonation & Waveform Pitch Comparison */}
-      <WaveformComparison shadowingAttempted={userAttempted} />
+      <WaveformComparison
+        shadowingAttempted={userAttempted}
+        originalPeaks={originalPeaks}
+        userPeaks={userPeaks}
+        originalDuration={originalDuration}
+        userDuration={userDuration}
+      />
 
       {/* Pronunciation evaluation AI Feedback */}
-      <FeedbackPanel words={sortedWords} shadowingAttempted={userAttempted} />
+      <FeedbackPanel words={userAttempted ? evaluatedWords : sortedWords} shadowingAttempted={userAttempted} />
     </div>
   );
 };

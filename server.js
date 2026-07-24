@@ -12,6 +12,78 @@ if (!fs.existsSync(RECORDINGS_DIR)) {
   fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
 }
 
+// Hàm tự động di chuyển các bản ghi cũ sang cấu trúc thư mục mới khi khởi động server
+function migrateOldRecordings() {
+  try {
+    if (!fs.existsSync(RECORDINGS_DIR)) return;
+
+    const items = fs.readdirSync(RECORDINGS_DIR);
+    // Chỉ lấy các tệp .wav nằm trực tiếp dưới thư mục recordings/
+    const wavFiles = items.filter(f => {
+      const p = path.join(RECORDINGS_DIR, f);
+      return f.endsWith('.wav') && fs.statSync(p).isFile();
+    });
+
+    if (wavFiles.length === 0) return;
+
+    console.log(`[*] Phát hiện ${wavFiles.length} bản ghi cũ cần di chuyển cấu trúc...`);
+
+    for (const wavFile of wavFiles) {
+      const baseName = path.basename(wavFile, '.wav');
+      const oldWavPath = path.join(RECORDINGS_DIR, wavFile);
+      const oldTxtPath = path.join(RECORDINGS_DIR, `${baseName}.txt`);
+      const oldJsonPath = path.join(RECORDINGS_DIR, `${baseName}.json`);
+
+      const newDirPath = path.join(RECORDINGS_DIR, baseName);
+      fs.mkdirSync(newDirPath, { recursive: true });
+
+      const newWavPath = path.join(newDirPath, 'audio.wav');
+      const newMetaPath = path.join(newDirPath, 'meta.json');
+
+      // Di chuyển tệp WAV
+      fs.renameSync(oldWavPath, newWavPath);
+
+      // Đọc thông tin từ các tệp cũ
+      let transcript = '';
+      let words = [];
+      let duration = 0;
+      let language = 'en-US';
+      const stats = fs.statSync(newWavPath);
+
+      if (fs.existsSync(oldTxtPath)) {
+        transcript = fs.readFileSync(oldTxtPath, 'utf-8');
+        fs.unlinkSync(oldTxtPath);
+      }
+
+      if (fs.existsSync(oldJsonPath)) {
+        try {
+          const jsonData = JSON.parse(fs.readFileSync(oldJsonPath, 'utf-8'));
+          words = jsonData.words || [];
+          duration = jsonData.duration || 0;
+          language = jsonData.language || 'en-US';
+        } catch (e) {}
+        fs.unlinkSync(oldJsonPath);
+      }
+
+      const metaOutput = {
+        filename: 'audio.wav',
+        duration: Number(duration),
+        language: language,
+        fullText: transcript || '(Đang tự động xử lý transcript...)',
+        words: words,
+        createdAt: stats.birthtime || stats.mtime || new Date().toISOString(),
+        fileType: 'audio/wav',
+        fileSize: stats.size
+      };
+
+      fs.writeFileSync(newMetaPath, JSON.stringify(metaOutput, null, 2), 'utf-8');
+      console.log(`[+] Đã chuyển đổi thành công bản ghi: ${baseName}`);
+    }
+  } catch (err) {
+    console.error('[-] Lỗi khi di chuyển cấu trúc bản ghi cũ:', err);
+  }
+}
+
 // MIME types hỗ trợ
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -28,7 +100,8 @@ const MIME_TYPES = {
 // Hàm chạy Python bóc tách chữ (Transcription)
 function runPythonTranscribe(baseName, lang = 'vi-VN') {
   return new Promise((resolve, reject) => {
-    const wavPath = path.join(RECORDINGS_DIR, `${baseName}.wav`);
+    const folderPath = path.join(RECORDINGS_DIR, baseName);
+    const wavPath = path.join(folderPath, 'audio.wav');
     const scriptPath = path.join(__dirname, 'transcribe.py');
     const cmd = `python "${scriptPath}" "${wavPath}" ${lang}`;
 
@@ -44,15 +117,119 @@ function runPythonTranscribe(baseName, lang = 'vi-VN') {
         console.log(`[*] Python stdout: ${stdout}`);
       }
 
-      const txtPath = path.join(RECORDINGS_DIR, `${baseName}.txt`);
-      if (fs.existsSync(txtPath)) {
-        const text = fs.readFileSync(txtPath, 'utf-8');
-        resolve(text);
-      } else {
-        resolve('');
+      // Python sinh ra file audio.txt và audio.json
+      const pyTxtPath = path.join(folderPath, 'audio.txt');
+      const pyJsonPath = path.join(folderPath, 'audio.json');
+      const metaPath = path.join(folderPath, 'meta.json');
+
+      let text = '';
+      let words = [];
+      let duration = 0;
+
+      if (fs.existsSync(pyTxtPath)) {
+        text = fs.readFileSync(pyTxtPath, 'utf-8');
       }
+
+      if (fs.existsSync(pyJsonPath)) {
+        try {
+          const pyJsonData = JSON.parse(fs.readFileSync(pyJsonPath, 'utf-8'));
+          words = pyJsonData.words || [];
+          duration = pyJsonData.duration || 0;
+        } catch (e) {
+          console.error('Lỗi khi đọc file JSON sinh từ python:', e);
+        }
+      }
+
+      // Tổng hợp vào file meta.json duy nhất
+      try {
+        const stats = fs.statSync(wavPath);
+        const metaOutput = {
+          filename: 'audio.wav',
+          duration: Number(duration),
+          language: lang,
+          fullText: text || '(Không thể nhận dạng được giọng nói trong file audio này)',
+          words: words,
+          createdAt: stats.birthtime || stats.mtime || new Date().toISOString(),
+          fileType: 'audio/wav',
+          fileSize: stats.size
+        };
+        fs.writeFileSync(metaPath, JSON.stringify(metaOutput, null, 2), 'utf-8');
+        console.log(`[+] Đã tạo file meta.json cho ${baseName}`);
+
+        // Xóa tệp tạm
+        if (fs.existsSync(pyTxtPath)) fs.unlinkSync(pyTxtPath);
+        if (fs.existsSync(pyJsonPath)) fs.unlinkSync(pyJsonPath);
+      } catch (metaErr) {
+        console.error('Lỗi tổng hợp meta.json sau khi chạy python:', metaErr);
+      }
+
+      resolve(text);
     });
   });
+}
+
+// Hàm bóc chữ sử dụng OpenAI Whisper Cloud API
+async function transcribeWithOpenAI(baseName, lang = 'en-US', whisperKey) {
+  const folderPath = path.join(RECORDINGS_DIR, baseName);
+  const wavPath = path.join(folderPath, 'audio.wav');
+  const metaPath = path.join(folderPath, 'meta.json');
+
+  if (!fs.existsSync(wavPath)) {
+    throw new Error(`File audio không tồn tại: ${wavPath}`);
+  }
+
+  console.log(`[*] Running OpenAI Whisper Cloud Transcribe for ${baseName} (lang: ${lang})...`);
+  const fileBuffer = fs.readFileSync(wavPath);
+  const audioBlob = new Blob([fileBuffer], { type: 'audio/wav' });
+
+  const formData = new FormData();
+  formData.append('file', audioBlob, 'audio.wav');
+  formData.append('model', 'whisper-1');
+  formData.append('response_format', 'verbose_json');
+  formData.append('timestamp_granularities[]', 'word');
+
+  if (lang) {
+    const langCode = lang.split('-')[0];
+    formData.append('language', langCode);
+  }
+
+  const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${whisperKey}`
+    },
+    body: formData
+  });
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData.error?.message || `HTTP error! status: ${response.status}`);
+  }
+
+  const result = await response.json();
+  const text = result.text || '';
+  const words = (result.words || []).map(w => ({
+    word: w.word,
+    start: Number(w.start),
+    end: Number(w.end)
+  }));
+
+  // Ghi trực tiếp tệp meta.json
+  const stats = fs.statSync(wavPath);
+  const metaOutput = {
+    filename: 'audio.wav',
+    duration: Number(result.duration || 0),
+    language: lang,
+    fullText: text,
+    words: words,
+    createdAt: stats.birthtime || stats.mtime || new Date().toISOString(),
+    fileType: 'audio/wav',
+    fileSize: stats.size
+  };
+  fs.writeFileSync(metaPath, JSON.stringify(metaOutput, null, 2), 'utf-8');
+
+  console.log(`[+] OpenAI Whisper finished successfully for ${baseName}`);
+  return text;
 }
 
 const server = http.createServer((req, res) => {
@@ -75,44 +252,56 @@ const server = http.createServer((req, res) => {
   // 1. GET /api/recordings - Danh sách các bản ghi đã lưu
   if (req.method === 'GET' && pathname === '/api/recordings') {
     try {
-      const files = fs.readdirSync(RECORDINGS_DIR);
-      const wavFiles = files.filter(f => f.endsWith('.wav'));
-      
-      const recordings = wavFiles.map(wavFile => {
-        const baseName = path.basename(wavFile, '.wav');
-        const wavPath = path.join(RECORDINGS_DIR, wavFile);
-        const txtPath = path.join(RECORDINGS_DIR, `${baseName}.txt`);
-        const jsonPath = path.join(RECORDINGS_DIR, `${baseName}.json`);
-        
-        const stats = fs.statSync(wavPath);
-        let transcript = '';
-        let words = [];
+      const items = fs.readdirSync(RECORDINGS_DIR);
+      const recordings = [];
 
-        if (fs.existsSync(txtPath)) {
-          transcript = fs.readFileSync(txtPath, 'utf-8');
+      for (const item of items) {
+        const dirPath = path.join(RECORDINGS_DIR, item);
+        const stats = fs.statSync(dirPath);
+
+        if (stats.isDirectory() && item.startsWith('REC_')) {
+          const wavPath = path.join(dirPath, 'audio.wav');
+          const metaPath = path.join(dirPath, 'meta.json');
+
+          if (fs.existsSync(wavPath)) {
+            const wavStats = fs.statSync(wavPath);
+            let transcript = '';
+            let words = [];
+            let duration = 0;
+            let language = 'en-US';
+            let createdAt = wavStats.birthtime || wavStats.mtime;
+            let aiScore = undefined;
+
+            if (fs.existsSync(metaPath)) {
+              try {
+                const metaData = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+                transcript = metaData.fullText || '';
+                words = metaData.words || [];
+                duration = metaData.duration || 0;
+                language = metaData.language || 'en-US';
+                if (metaData.createdAt) createdAt = new Date(metaData.createdAt);
+                aiScore = metaData.aiScore;
+              } catch (e) {
+                console.error(`Lỗi đọc file meta.json của ${item}:`, e);
+              }
+            }
+
+            const isProcessing = transcript.includes('(Đang tự động xử lý transcript...)');
+
+            recordings.push({
+              id: item,
+              filename: `${item}/audio.wav`, // Trả về đường dẫn tương đối dạng thư mục/tệp
+              txtFilename: `${item}/meta.json`,
+              size: wavStats.size,
+              createdAt: createdAt,
+              transcript: transcript,
+              words: words,
+              processing: isProcessing,
+              aiScore: aiScore
+            });
+          }
         }
-
-        if (fs.existsSync(jsonPath)) {
-          try {
-            const jsonData = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
-            words = jsonData.words || [];
-          } catch (e) {}
-        }
-
-        const isProcessing = transcript.includes('(Đang tự động xử lý transcript...)');
-
-        return {
-          id: baseName,
-          filename: wavFile,
-          txtFilename: `${baseName}.txt`,
-          jsonFilename: `${baseName}.json`,
-          size: stats.size,
-          createdAt: stats.birthtime || stats.mtime,
-          transcript: transcript,
-          words: words,
-          processing: isProcessing
-        };
-      });
+      }
 
       // Sắp xếp bản ghi mới nhất lên đầu
       recordings.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -137,7 +326,7 @@ const server = http.createServer((req, res) => {
     req.on('end', () => {
       try {
         const data = JSON.parse(body);
-        const { audioBase64, transcript, customName, language } = data;
+        const { audioBase64, transcript, customName, language, whisperKey } = data;
 
         if (!audioBase64) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -151,37 +340,73 @@ const server = http.createServer((req, res) => {
         const safeCustomName = customName ? customName.replace(/[^a-zA-Z0-9_-]/g, '_') + '_' : '';
         const baseName = `REC_${safeCustomName}${timestamp}`;
 
-        const wavPath = path.join(RECORDINGS_DIR, `${baseName}.wav`);
-        const txtPath = path.join(RECORDINGS_DIR, `${baseName}.txt`);
+        const dirPath = path.join(RECORDINGS_DIR, baseName);
+        fs.mkdirSync(dirPath, { recursive: true });
+
+        const wavPath = path.join(dirPath, 'audio.wav');
+        const metaPath = path.join(dirPath, 'meta.json');
 
         // Chuyển base64 thành Buffer và ghi đĩa
         const base64Data = audioBase64.replace(/^data:audio\/\w+;base64,/, '');
         const audioBuffer = Buffer.from(base64Data, 'base64');
         fs.writeFileSync(wavPath, audioBuffer);
 
-        // Ghi file transcript ban đầu
+        // Tạo file meta.json ban đầu
         let finalTranscript = (transcript && transcript.trim()) ? transcript : '(Đang tự động xử lý transcript...)';
-        fs.writeFileSync(txtPath, finalTranscript, 'utf-8');
+        const initialMeta = {
+          filename: 'audio.wav',
+          duration: 0,
+          language: language || 'en-US',
+          fullText: finalTranscript,
+          words: [],
+          createdAt: now.toISOString(),
+          fileType: 'audio/wav',
+          fileSize: audioBuffer.length
+        };
+        fs.writeFileSync(metaPath, JSON.stringify(initialMeta, null, 2), 'utf-8');
 
-        console.log(`[+] Đã lưu file WAV: ${baseName}.wav`);
+        console.log(`[+] Đã lưu file WAV vào thư mục: ${baseName}/audio.wav`);
 
         let processing = false;
-        // Nếu transcript rỗng (ví dụ thu từ Âm thanh Hệ Thống), tự động chạy Python transcribe NGẦM (background)
+        // Nếu transcript rỗng (ví dụ thu từ Âm thanh Hệ Thống), tự động chạy transcribe NGẦM (background)
         if (!transcript || !transcript.trim() || transcript === '(Không có văn bản transcript)') {
-          console.log(`[*] Live transcript is empty. Triggering Python AI Transcribe in background for ${baseName}...`);
+          console.log(`[*] Live transcript is empty. Triggering transcription for ${baseName}...`);
           processing = true;
 
           // Chạy ngầm hoàn toàn không await chặn luồng phản hồi HTTP
-          runPythonTranscribe(baseName, language || 'en-US').then((text) => {
-            if (!text || text.includes('(Đang tự động xử lý transcript...)')) {
-              text = '(Không thể nhận dạng được giọng nói trong file audio này)';
+          const runTranscribeTask = async () => {
+            try {
+              if (whisperKey && whisperKey.startsWith('sk-')) {
+                try {
+                  await transcribeWithOpenAI(baseName, language || 'en-US', whisperKey);
+                  return;
+                } catch (openaiErr) {
+                  console.error(`[-] OpenAI Whisper failed for ${baseName}, falling back to Python:`, openaiErr.message);
+                }
+              }
+              const text = await runPythonTranscribe(baseName, language || 'en-US');
+              if (!text || text.includes('(Đang tự động xử lý transcript...)')) {
+                if (fs.existsSync(metaPath)) {
+                  try {
+                    const metaContent = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+                    metaContent.fullText = '(Không thể nhận dạng được giọng nói trong file audio này)';
+                    fs.writeFileSync(metaPath, JSON.stringify(metaContent, null, 2), 'utf-8');
+                  } catch (e) {}
+                }
+              }
+            } catch (err) {
+              console.error(`[-] Background transcription failed for ${baseName}:`, err);
+              if (fs.existsSync(metaPath)) {
+                try {
+                  const metaContent = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+                  metaContent.fullText = '(Lỗi khi tự động xử lý transcript)';
+                  fs.writeFileSync(metaPath, JSON.stringify(metaContent, null, 2), 'utf-8');
+                } catch (e) {}
+              }
             }
-            fs.writeFileSync(txtPath, text, 'utf-8');
-            console.log(`[+] Background transcription finished for ${baseName}`);
-          }).catch((err) => {
-            console.error(`[-] Background transcription failed for ${baseName}:`, err);
-            fs.writeFileSync(txtPath, '(Lỗi khi tự động xử lý transcript)', 'utf-8');
-          });
+          };
+
+          runTranscribeTask();
         }
 
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -190,8 +415,8 @@ const server = http.createServer((req, res) => {
           message: processing ? 'Đang xử lý bóc chữ dưới nền...' : 'Lưu bản ghi thành công!',
           recording: {
             id: baseName,
-            filename: `${baseName}.wav`,
-            txtFilename: `${baseName}.txt`,
+            filename: `${baseName}/audio.wav`,
+            txtFilename: `${baseName}/meta.json`,
             size: audioBuffer.length,
             createdAt: now,
             transcript: finalTranscript,
@@ -207,7 +432,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // 2b. POST /api/transcribe/:id - Gọi Python xử lý transcript thủ công từ file WAV
+  // 2b. POST /api/transcribe/:id - Gọi xử lý transcript thủ công từ file WAV
   if (req.method === 'POST' && pathname.startsWith('/api/transcribe/')) {
     const id = pathname.replace('/api/transcribe/', '');
     let body = '';
@@ -216,20 +441,33 @@ const server = http.createServer((req, res) => {
       try {
         const data = body ? JSON.parse(body) : {};
         let lang = data.language;
+        const whisperKey = data.whisperKey;
 
         if (!lang) {
-          const jsonPath = path.join(RECORDINGS_DIR, `${id}.json`);
-          if (fs.existsSync(jsonPath)) {
+          const folderPath = path.join(RECORDINGS_DIR, id);
+          const metaPath = path.join(folderPath, 'meta.json');
+          if (fs.existsSync(metaPath)) {
             try {
-              const jsonData = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
-              lang = jsonData.language;
+              const metaData = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+              lang = metaData.language;
             } catch (e) {}
           }
         }
         lang = lang || 'en-US';
 
         console.log(`[*] Requesting manual transcription for ${id} (lang: ${lang})...`);
-        const text = await runPythonTranscribe(id, lang);
+        let text = '';
+        if (whisperKey && whisperKey.startsWith('sk-')) {
+          try {
+            text = await transcribeWithOpenAI(id, lang, whisperKey);
+          } catch (openaiErr) {
+            console.error(`[-] Manual OpenAI Whisper failed for ${id}, falling back to Python:`, openaiErr.message);
+            text = await runPythonTranscribe(id, lang);
+          }
+        } else {
+          text = await runPythonTranscribe(id, lang);
+        }
+
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ success: true, transcript: text }));
       } catch (err) {
@@ -243,14 +481,12 @@ const server = http.createServer((req, res) => {
   // 3. DELETE /api/recordings/:id - Xóa bản ghi
   if (req.method === 'DELETE' && pathname.startsWith('/api/recordings/')) {
     const id = pathname.replace('/api/recordings/', '');
-    const wavPath = path.join(RECORDINGS_DIR, `${id}.wav`);
-    const txtPath = path.join(RECORDINGS_DIR, `${id}.txt`);
-    const jsonPath = path.join(RECORDINGS_DIR, `${id}.json`);
+    const dirPath = path.join(RECORDINGS_DIR, id);
 
     try {
-      if (fs.existsSync(wavPath)) fs.unlinkSync(wavPath);
-      if (fs.existsSync(txtPath)) fs.unlinkSync(txtPath);
-      if (fs.existsSync(jsonPath)) fs.unlinkSync(jsonPath);
+      if (fs.existsSync(dirPath)) {
+        fs.rmSync(dirPath, { recursive: true, force: true });
+      }
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true, message: 'Đã xóa bản ghi' }));
@@ -263,8 +499,15 @@ const server = http.createServer((req, res) => {
 
   // 4. Stream file âm thanh hoặc transcript từ /recordings/
   if (req.method === 'GET' && pathname.startsWith('/recordings/')) {
-    const fileName = path.basename(pathname);
-    const filePath = path.join(RECORDINGS_DIR, fileName);
+    const relativePath = pathname.replace('/recordings/', '');
+    const filePath = path.resolve(RECORDINGS_DIR, relativePath);
+
+    // Chống Path Traversal
+    if (!filePath.startsWith(RECORDINGS_DIR)) {
+      res.writeHead(403, { 'Content-Type': 'text/plain' });
+      res.end('Forbidden');
+      return;
+    }
 
     if (fs.existsSync(filePath)) {
       const ext = path.extname(filePath).toLowerCase();
@@ -343,6 +586,8 @@ const server = http.createServer((req, res) => {
     fs.createReadStream(filePath).pipe(res);
   });
 });
+
+migrateOldRecordings();
 
 server.listen(PORT, () => {
   console.log(`====================================================`);

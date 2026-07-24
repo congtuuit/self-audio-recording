@@ -9,8 +9,10 @@ import { SettingsDialog } from './SettingsDialog';
 import { useRecordings } from '../hooks/useRecordings';
 import { useAudioRecorder } from '../hooks/useAudioRecorder';
 import { Recording } from '../types';
+import { useDialog } from '../context/DialogContext';
 
 export const AppLayout: React.FC = () => {
+  const { alert: showAlert, prompt: showPrompt } = useDialog();
   const {
     recordings,
     isLoading,
@@ -76,7 +78,11 @@ export const AppLayout: React.FC = () => {
     try {
       await startRecording(sourceMode);
     } catch (err: unknown) {
-      alert(`Lỗi ghi âm: ${err instanceof Error ? err.message : String(err)}`);
+      showAlert({
+        title: 'Lỗi ghi âm',
+        message: err instanceof Error ? err.message : String(err),
+        type: 'error'
+      });
     }
   };
 
@@ -85,13 +91,24 @@ export const AppLayout: React.FC = () => {
     try {
       const wavBlob = await stopRecording();
       if (wavBlob) {
-        // Hỏi tên custom
-        const customName = prompt("Nhập tên bản ghi (hoặc để trống):") || "";
-        // Lưu
-        await saveRecording(wavBlob, "", customName, lang);
+        // Hỏi tên custom bằng Prompt Modal thân thiện
+        const customName = await showPrompt({
+          title: 'Lưu bản ghi',
+          message: 'Nhập tên cho bản ghi âm này (hoặc để trống để tự động đặt tên):',
+          placeholder: 'Ví dụ: Shadowing Lesson 1'
+        });
+
+        // Nếu click Cancel (trả về null), không lưu bản ghi
+        if (customName !== null) {
+          await saveRecording(wavBlob, "", customName, lang);
+        }
       }
     } catch (err: unknown) {
-      alert(`Lỗi khi lưu bản ghi: ${err instanceof Error ? err.message : String(err)}`);
+      showAlert({
+        title: 'Lỗi khi lưu bản ghi',
+        message: err instanceof Error ? err.message : String(err),
+        type: 'error'
+      });
     } finally {
       setIsSaving(false);
     }

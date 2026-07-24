@@ -23,7 +23,11 @@ export const RecorderControls: React.FC<RecorderControlsProps> = ({
   onStopRecording,
   isSaving
 }) => {
-  const [sourceMode, setSourceMode] = useState<'mic' | 'system' | 'both' | 'screen'>('mic');
+  const isSystemAudioSupported = typeof navigator.mediaDevices?.getDisplayMedia === 'function';
+  const [sourceMode, setSourceMode] = useState<'mic' | 'system' | 'both' | 'screen'>(
+    isSystemAudioSupported ? 'system' : 'mic'
+  );
+  const showSupportWarning = (sourceMode === 'system' || sourceMode === 'both' || sourceMode === 'screen') && !isSystemAudioSupported;
 
   // Format time sang 00:00:00
   const formatTime = (ms: number) => {
@@ -58,6 +62,12 @@ export const RecorderControls: React.FC<RecorderControlsProps> = ({
           </select>
         </div>
       </div>
+
+      {showSupportWarning && (
+        <div className="w-full text-center text-xs text-amber-500 font-semibold bg-amber-500/10 border border-amber-500/20 py-2 px-4 rounded-xl">
+          ⚠️ Trình duyệt của bạn không hỗ trợ ghi âm hệ thống. Vui lòng chuyển sang "Microphone Only".
+        </div>
+      )}
 
       {/* Large Monospace Timer */}
       <div className="flex flex-col items-center gap-1">
