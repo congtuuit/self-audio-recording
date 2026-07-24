@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { RotateCcw, Volume2, Mic, Info, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { RotateCcw, Volume2, Mic, X, BookOpen } from 'lucide-react';
 import { FeedbackPanel } from './FeedbackPanel';
 import { WaveformComparison } from './WaveformComparison';
 import { Recording } from '../../types';
@@ -58,7 +59,7 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
   onClose,
   reTranscribe
 }) => {
-  const { alert: showAlert } = useDialog();
+  const { alert: showAlert, confirm: showConfirm } = useDialog();
   const [currentTime, setCurrentTime] = useState(0);
   const [speed, setSpeed] = useState(1.0);
   const [isLoopActive, setIsLoopActive] = useState(false);
@@ -75,6 +76,15 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
 
   const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
   const [evaluatedWords, setEvaluatedWords] = useState<any[]>([]);
+
+  // Hover Dictionary & IPA state
+  const [hoveredWordInfo, setHoveredWordInfo] = useState<{
+    word: string;
+    cleanWord: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [dictCache, setDictCache] = useState<Record<string, { phonetic: string; meaning: string; loading: boolean }>>({});
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -188,36 +198,52 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
     }
   };
 
-  // Double click tra từ điển
-  const handleWordDblClick = async (word: string) => {
-    const cleanWord = word.replace(/[^a-zA-Z]/g, '').toLowerCase();
+  // Hover tra từ điển & IPA
+  const handleWordHover = async (e: React.MouseEvent<HTMLSpanElement>, rawWord: string) => {
+    const cleanWord = rawWord.replace(/[^a-zA-Z]/g, '').toLowerCase();
     if (!cleanWord) return;
-    try {
-      const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${cleanWord}`);
-      const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) {
-        const entry = data[0];
-        const phonetic = entry.phonetic || (entry.phonetics.find((p: { text?: string }) => p.text) || {}).text || '';
-        const meaning = (entry.meanings[0] && entry.meanings[0].definitions[0]) ? entry.meanings[0].definitions[0].definition : '';
-        showAlert({
-          title: `Từ điển: ${cleanWord} ${phonetic}`,
-          message: meaning,
-          type: 'info'
-        });
-      } else {
-        showAlert({
-          title: 'Tra từ điển',
-          message: `Không tìm thấy định nghĩa cho: "${cleanWord}"`,
-          type: 'warning'
-        });
+
+    const target = e.currentTarget;
+    const x = target.offsetLeft + target.offsetWidth / 2;
+    const y = target.offsetTop + target.offsetHeight + 6;
+
+    setHoveredWordInfo({
+      word: rawWord,
+      cleanWord,
+      x,
+      y
+    });
+
+    if (!dictCache[cleanWord]) {
+      setDictCache(prev => ({ ...prev, [cleanWord]: { phonetic: '', meaning: '', loading: true } }));
+      try {
+        const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${cleanWord}`);
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          const entry = data[0];
+          const phonetic = entry.phonetic || (entry.phonetics?.find((p: { text?: string }) => p.text) || {}).text || '';
+          const meaning = (entry.meanings?.[0]?.definitions?.[0]?.definition) || 'Không có định nghĩa mẫu.';
+          setDictCache(prev => ({
+            ...prev,
+            [cleanWord]: { phonetic, meaning, loading: false }
+          }));
+        } else {
+          setDictCache(prev => ({
+            ...prev,
+            [cleanWord]: { phonetic: '', meaning: 'Không tìm thấy định nghĩa', loading: false }
+          }));
+        }
+      } catch {
+        setDictCache(prev => ({
+          ...prev,
+          [cleanWord]: { phonetic: '', meaning: 'Lỗi tra từ điển', loading: false }
+        }));
       }
-    } catch (err) {
-      showAlert({
-        title: 'Lỗi tra từ điển',
-        message: `Lỗi kết nối hoặc API giới hạn khi tra từ điển cho: "${cleanWord}"`,
-        type: 'error'
-      });
     }
+  };
+
+  const handleWordLeave = () => {
+    setHoveredWordInfo(null);
   };
 
   // Karaoke Word highlight sync
@@ -424,8 +450,14 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
 
           {/* AI Transcribe trigger */}
           <button
-            onClick={() => {
-              if (confirm('Bạn có muốn chạy lại AI bóc chữ cho bài học này không?')) {
+            onClick={async () => {
+              const hasConfirmed = await showConfirm({
+                title: 'Chạy lại AI bóc chữ',
+                message: 'Bạn có muốn chạy lại AI bóc chữ cho bài học này không?',
+                confirmLabel: 'Chạy lại',
+                cancelLabel: 'Hủy'
+              });
+              if (hasConfirmed) {
                 reTranscribe(lesson.id, 'en-US');
               }
             }}
@@ -445,11 +477,11 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
       </div>
 
       {/* Interactive Subtitles Karaoke Panel */}
-      <div className="p-5 rounded-2xl bg-card border border-borderCustom space-y-3">
+      <div className="p-5 rounded-2xl bg-card border border-borderCustom space-y-3 relative">
         <div className="flex items-center justify-between pb-3 border-b border-borderCustom/60">
           <span className="text-xs font-bold text-textMuted uppercase tracking-wider">Karaoke Sync Subtitle</span>
           <span className="text-[10px] text-textMuted flex items-center gap-1">
-            <Info className="w-3 h-3 text-accent" /> Double click từ để dịch IPA
+            <BookOpen className="w-3 h-3 text-accent" /> Rê chuột (Hover) vào từ để xem IPA & Định nghĩa
           </span>
         </div>
 
@@ -457,20 +489,29 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
         <div
           ref={transcriptRef}
           onMouseEnter={() => setIsUserHovering(true)}
-          onMouseLeave={() => setIsUserHovering(false)}
-          className="min-h-[140px] max-h-[220px] overflow-y-auto leading-relaxed text-lg py-2 select-none pr-1"
+          onMouseLeave={() => {
+            setIsUserHovering(false);
+            handleWordLeave();
+          }}
+          className="min-h-[140px] max-h-[220px] overflow-y-auto leading-relaxed text-lg py-2 select-none pr-1 relative"
         >
           <div className="flex flex-wrap gap-x-1.5 gap-y-2">
             {sortedWords.map((w, idx) => {
               const isActive = currentTime >= w.start && currentTime <= w.end;
+              const isPassed = currentTime > w.end;
               return (
                 <span
                   key={idx}
                   data-start={w.start}
                   onClick={() => handleWordClick(w.start)}
-                  onDoubleClick={() => handleWordDblClick(w.word)}
+                  onMouseEnter={(e) => handleWordHover(e, w.word)}
+                  onMouseLeave={handleWordLeave}
                   className={`interactive-word ${
-                    isActive ? 'active-word' : 'text-textSecondary/80'
+                    isActive
+                      ? 'active-word'
+                      : isPassed
+                      ? 'text-white/95'
+                      : 'text-textMuted/65'
                   }`}
                 >
                   {w.word}
@@ -478,6 +519,45 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
               );
             })}
           </div>
+
+          {/* Floating Glassmorphic Tooltip on Word Hover */}
+          <AnimatePresence>
+            {hoveredWordInfo && (
+              <motion.div
+                initial={{ opacity: 0, y: -6, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6, scale: 0.95 }}
+                transition={{ duration: 0.15 }}
+                style={{
+                  left: `${Math.max(10, Math.min(hoveredWordInfo.x - 120, 320))}px`,
+                  top: `${hoveredWordInfo.y}px`
+                }}
+                className="absolute z-40 w-60 p-3 rounded-xl bg-cardSecondary/95 border border-accent/40 shadow-2xl backdrop-blur-lg text-white pointer-events-none"
+              >
+                <div className="flex items-center justify-between gap-1 border-b border-borderCustom/60 pb-1.5 mb-1.5">
+                  <span className="text-xs font-bold text-accent capitalize flex items-center gap-1">
+                    <BookOpen className="w-3 h-3 text-accent" />
+                    {hoveredWordInfo.cleanWord}
+                  </span>
+                  {dictCache[hoveredWordInfo.cleanWord]?.phonetic ? (
+                    <span className="text-[11px] font-mono text-emerald-400 font-semibold">
+                      {dictCache[hoveredWordInfo.cleanWord].phonetic}
+                    </span>
+                  ) : null}
+                </div>
+                {dictCache[hoveredWordInfo.cleanWord]?.loading ? (
+                  <div className="text-[10px] text-textMuted flex items-center gap-1.5 py-1">
+                    <span className="w-2 h-2 rounded-full bg-accent animate-ping"></span>
+                    Đang tra IPA & từ điển...
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-textSecondary leading-snug line-clamp-3">
+                    {dictCache[hoveredWordInfo.cleanWord]?.meaning || 'Không tìm thấy định nghĩa'}
+                  </p>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 

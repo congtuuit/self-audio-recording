@@ -45,7 +45,6 @@ export const DialogProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [message, setMessage] = useState('');
   const [type, setType] = useState<'info' | 'success' | 'error' | 'warning'>('info');
   const [placeholder, setPlaceholder] = useState('');
-  const [defaultValue, setDefaultValue] = useState('');
   const [inputValue, setInputValue] = useState('');
   const [confirmLabel, setConfirmLabel] = useState('Confirm');
   const [cancelLabel, setCancelLabel] = useState('Cancel');
@@ -90,7 +89,6 @@ export const DialogProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setTitle(options.title || 'Input Required');
       setMessage(options.message);
       setPlaceholder(options.placeholder || '');
-      setDefaultValue(options.defaultValue || '');
       setInputValue(options.defaultValue || '');
       setType('info');
       setIsOpen(true);
@@ -104,6 +102,24 @@ export const DialogProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       resolverRef.current(value);
     }, 200);
   };
+
+  // Keyboard shortcut listener (Escape to cancel/close, Enter to confirm/submit)
+  React.useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleClose(mode === 'confirm' ? false : null);
+      } else if (e.key === 'Enter' && mode !== 'prompt') {
+        e.preventDefault();
+        handleClose(mode === 'confirm' ? true : null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, mode]);
 
   const renderIcon = () => {
     switch (mode) {
