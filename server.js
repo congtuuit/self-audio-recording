@@ -51,21 +51,32 @@ const server = http.createServer((req, res) => {
         const baseName = path.basename(wavFile, '.wav');
         const wavPath = path.join(RECORDINGS_DIR, wavFile);
         const txtPath = path.join(RECORDINGS_DIR, `${baseName}.txt`);
+        const jsonPath = path.join(RECORDINGS_DIR, `${baseName}.json`);
         
         const stats = fs.statSync(wavPath);
         let transcript = '';
+        let words = [];
         
         if (fs.existsSync(txtPath)) {
           transcript = fs.readFileSync(txtPath, 'utf-8');
+        }
+
+        if (fs.existsSync(jsonPath)) {
+          try {
+            const jsonData = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+            words = jsonData.words || [];
+          } catch (e) {}
         }
 
         return {
           id: baseName,
           filename: wavFile,
           txtFilename: `${baseName}.txt`,
+          jsonFilename: `${baseName}.json`,
           size: stats.size,
           createdAt: stats.birthtime || stats.mtime,
-          transcript: transcript
+          transcript: transcript,
+          words: words
         };
       });
 
@@ -182,7 +193,19 @@ function runPythonTranscribe(baseName, lang = 'vi-VN') {
     req.on('end', async () => {
       try {
         const data = body ? JSON.parse(body) : {};
-        const lang = data.language || 'vi-VN';
+        let lang = data.language;
+
+        if (!lang) {
+          const jsonPath = path.join(RECORDINGS_DIR, `${id}.json`);
+          if (fs.existsSync(jsonPath)) {
+            try {
+              const jsonData = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+              lang = jsonData.language;
+            } catch (e) {}
+          }
+        }
+        lang = lang || 'en-US';
+
         console.log(`[*] Requesting manual transcription for ${id} (lang: ${lang})...`);
         const text = await runPythonTranscribe(id, lang);
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });

@@ -342,6 +342,32 @@ canvas {
   color: var(--text-main);
 }
 
+/* Interactive Subtitle & Karaoke Word Highlighting */
+.interactive-word {
+  display: inline-block;
+  cursor: pointer;
+  padding: 0.1rem 0.3rem;
+  margin: 0.1rem 0.1rem;
+  border-radius: 6px;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+}
+
+.interactive-word:hover {
+  background: rgba(99, 102, 241, 0.3);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.interactive-word.active-word {
+  background: linear-gradient(135deg, #6366f1 0%, #ec4899 100%);
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 0 14px rgba(99, 102, 241, 0.7);
+  transform: scale(1.12);
+  border-radius: 6px;
+}
+
 .transcript-footer {
   display: flex;
   justify-content: space-between;

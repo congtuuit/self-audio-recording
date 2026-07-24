@@ -71,6 +71,14 @@ document.addEventListener('DOMContentLoaded', () => {
   if (btnTestSpeech) {
     btnTestSpeech.addEventListener('click', toggleTestSpeech);
   }
+
+  const btnUiLangToggle = document.getElementById('btnUiLangToggle');
+  if (btnUiLangToggle) {
+    btnUiLangToggle.addEventListener('click', () => {
+      const nextLang = currentUiLang === 'en-US' ? 'vi-VN' : 'en-US';
+      setUiLanguage(nextLang);
+    });
+  }
 });
 
 // --- 2. WEB SPEECH RECOGNITION (TRANSCRIPT) ---
@@ -317,6 +325,30 @@ async function startRecording() {
       systemSource.connect(mixedDestination);
 
       finalAudioStream = mixedDestination.stream;
+    } else if (audioSourceMode === 'screen') {
+      // 4. QUAY MÀN HÌNH HD + ÂM THANH
+      showToast('ℹ️ Vui lòng chọn màn hình/thẻ cần quay!');
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: { width: 1920, height: 1080 }, audio: true });
+      activeStreams.push(displayStream);
+
+      // Hiển thị Live Video Preview
+      const canvasEl = document.getElementById('visualizerCanvas');
+      const videoEl = document.getElementById('videoPreview');
+      if (canvasEl && videoEl) {
+        canvasEl.style.display = 'none';
+        videoEl.style.display = 'block';
+        videoEl.srcObject = displayStream;
+      }
+
+      const systemAudioTrack = displayStream.getAudioTracks()[0];
+      if (systemAudioTrack) {
+        finalAudioStream = new MediaStream([systemAudioTrack]);
+      } else {
+        // Fallback mic nếu không có system audio track
+        const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        activeStreams.push(micStream);
+        finalAudioStream = micStream;
+      }
     }
   } catch (err) {
     showToast(`❌ Lỗi: ${err.message || 'Không thể truy cập nguồn âm thanh!'}`);
@@ -449,6 +481,14 @@ async function stopRecording() {
   statusBadge.className = 'status-badge';
   statusText.textContent = 'Sẵn sàng';
   setDefaultRecordingName();
+
+  const canvasEl = document.getElementById('visualizerCanvas');
+  const videoEl = document.getElementById('videoPreview');
+  if (canvasEl && videoEl) {
+    canvasEl.style.display = 'block';
+    videoEl.style.display = 'none';
+    videoEl.srcObject = null;
+  }
 
   drawIdleVisualizer();
 }
@@ -612,6 +652,11 @@ async function saveRecordingToServer(wavBlob, transcriptText, customName) {
   }
 }
 
+// Interactive Learning Player State
+let currentActiveAudio = null;
+let currentLessonWords = [];
+let isShadowingLoopActive = false;
+
 async function loadRecordingsLibrary() {
   try {
     recordingsList.innerHTML = '<div class="loading-spinner">Đang tải danh sách...</div>';
@@ -624,9 +669,10 @@ async function loadRecordingsLibrary() {
     }
 
     recordingsList.innerHTML = '';
-    data.recordings.forEach(rec => {
+    data.recordings.forEach((rec, idx) => {
       const dateStr = new Date(rec.createdAt).toLocaleString('vi-VN');
       const sizeKB = (rec.size / 1024).toFixed(1);
+      const audioId = `audio_player_${idx}`;
 
       const item = document.createElement('div');
       item.className = 'recording-item';
@@ -640,7 +686,8 @@ async function loadRecordingsLibrary() {
         </div>
         ${rec.transcript ? `<div class="rec-transcript-preview">📝 ${escapeHtml(rec.transcript)}</div>` : ''}
         <div class="rec-actions">
-          <audio controls src="/recordings/${rec.filename}"></audio>
+          <audio id="${audioId}" controls src="/recordings/${rec.filename}"></audio>
+          <button class="btn-ghost" onclick="attachInteractivePlayer('${rec.id}', '${audioId}')" title="Phát & Học tiếng Anh tương tác (Karaoke Sync)">🎓 Học bài này</button>
           <a href="/recordings/${rec.filename}" download="${rec.filename}" class="btn-ghost" title="Tải file WAV">⬇️ .WAV</a>
           <a href="/recordings/${rec.txtFilename}" download="${rec.txtFilename}" class="btn-ghost" title="Tải file Text">📄 .TXT</a>
           <button class="btn-ghost" onclick="triggerTranscribe('${rec.id}')" title="Phân tích lại Transcript từ file WAV này">🤖 AI Transcribe</button>
@@ -650,9 +697,161 @@ async function loadRecordingsLibrary() {
       `;
       recordingsList.appendChild(item);
     });
+
+    // Setup speed & loop control listeners
+    const speedSelect = document.getElementById('playbackSpeedSelect');
+    if (speedSelect) {
+      speedSelect.onchange = () => {
+        if (currentActiveAudio) {
+          currentActiveAudio.playbackRate = parseFloat(speedSelect.value);
+          showToast(`⚡ Tốc độ phát: ${speedSelect.value}x`);
+        }
+      };
+    }
+
+    const btnLoop = document.getElementById('btnToggleLoop');
+    if (btnLoop) {
+      btnLoop.onclick = () => {
+        isShadowingLoopActive = !isShadowingLoopActive;
+        btnLoop.style.background = isShadowingLoopActive ? 'rgba(239, 68, 68, 0.3)' : 'transparent';
+        btnLoop.style.color = isShadowingLoopActive ? '#ef4444' : 'inherit';
+        showToast(isShadowingLoopActive ? '🔂 Đã BẬT chế độ Lặp câu (Shadowing Loop)' : '⏹️ Đã TẮT chế độ Lặp câu');
+      };
+    }
+
   } catch (err) {
     console.error('Load library error:', err);
     recordingsList.innerHTML = '<p class="placeholder-text" style="color: #ef4444;">Không thể kết nối đến server để lấy danh sách bản ghi.</p>';
+  }
+}
+
+async function attachInteractivePlayer(recId, audioId) {
+  const audioEl = document.getElementById(audioId);
+  if (!audioEl) return;
+
+  currentActiveAudio = audioEl;
+  const speedSelect = document.getElementById('playbackSpeedSelect');
+  if (speedSelect) audioEl.playbackRate = parseFloat(speedSelect.value);
+
+  showToast(`🎓 Đang tải bài học tương tác cho [${recId}]...`);
+
+  // Lấy dữ liệu mốc thời gian từ API
+  try {
+    const res = await fetch('/api/recordings');
+    const data = await res.json();
+    const targetRec = data.recordings.find(r => r.id === recId);
+
+    if (!targetRec || !targetRec.words || targetRec.words.length === 0) {
+      showToast('⚠️ Bài học này chưa có dữ liệu mốc thời gian. Đang tự động phân tích...');
+      await triggerTranscribe(recId);
+      return;
+    }
+
+    currentLessonWords = targetRec.words;
+    renderInteractiveWords(currentLessonWords, audioId);
+
+    // Sync timeupdate Karaoke
+    audioEl.ontimeupdate = () => {
+      syncKaraokeHighlight(audioEl.currentTime, audioId);
+    };
+
+    audioEl.play();
+    showToast('▶️ Đang phát bài học! Bấm vào bất kỳ từ nào để nghe lại phát âm từ đó.');
+  } catch (err) {
+    console.error('Attach player error:', err);
+  }
+}
+
+function renderInteractiveWords(words, audioId) {
+  if (!words || words.length === 0) return;
+
+  transcriptBox.innerHTML = '';
+  const container = document.createElement('div');
+  container.className = 'interactive-transcript-container';
+
+  words.forEach((w, idx) => {
+    const span = document.createElement('span');
+    span.className = 'interactive-word';
+    span.dataset.start = w.start;
+    span.dataset.end = w.end;
+    span.dataset.word = w.word;
+    span.textContent = w.word + ' ';
+
+    // Click-to-seek: Bấm vào từ để phát đúng từ đó
+    span.onclick = (e) => {
+      e.stopPropagation();
+      seekToWord(w.start, audioId);
+    };
+
+    // Double-click: Tra từ điển IPA
+    span.ondblclick = (e) => {
+      e.stopPropagation();
+      lookupDictionaryWord(w.word);
+    };
+
+    container.appendChild(span);
+  });
+
+  transcriptBox.appendChild(container);
+}
+
+function syncKaraokeHighlight(currentTime, audioId) {
+  const wordSpans = transcriptBox.querySelectorAll('.interactive-word');
+  let currentActiveWord = null;
+
+  wordSpans.forEach(span => {
+    const start = parseFloat(span.dataset.start);
+    const end = parseFloat(span.dataset.end);
+
+    if (currentTime >= start && currentTime <= end) {
+      span.classList.add('active-word');
+      currentActiveWord = span;
+    } else {
+      span.classList.remove('active-word');
+    }
+  });
+
+  if (currentActiveWord) {
+    currentActiveWord.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+
+    // Handle Shadowing A-B loop
+    if (isShadowingLoopActive && currentActiveAudio) {
+      const activeEnd = parseFloat(currentActiveWord.dataset.end);
+      if (currentTime >= activeEnd - 0.05) {
+        currentActiveAudio.currentTime = parseFloat(currentActiveWord.dataset.start);
+      }
+    }
+  }
+}
+
+function seekToWord(startTime, audioId) {
+  const audioEl = document.getElementById(audioId) || currentActiveAudio;
+  if (audioEl) {
+    audioEl.currentTime = startTime;
+    audioEl.play();
+  }
+}
+
+async function lookupDictionaryWord(word) {
+  const cleanWord = word.replace(/[^a-zA-Z]/g, '').toLowerCase();
+  if (!cleanWord) return;
+
+  showToast(`📖 Đang tra từ điển cho: "${cleanWord}"...`);
+  try {
+    const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${cleanWord}`);
+    const data = await res.json();
+
+    if (Array.isArray(data) && data.length > 0) {
+      const entry = data[0];
+      const phonetic = entry.phonetic || (entry.phonetics.find(p => p.text) || {}).text || '';
+      const meaning = (entry.meanings[0] && entry.meanings[0].definitions[0]) ? entry.meanings[0].definitions[0].definition : '';
+      
+      showToast(`📖 [${cleanWord}] ${phonetic}: ${meaning.slice(0, 80)}...`);
+    } else {
+      showToast(`📖 Không tìm thấy từ điển cho: "${cleanWord}"`);
+    }
+  } catch (err) {
+    showToast(`📖 Tra từ điển "${cleanWord}" thất bại.`);
   }
 }
 
