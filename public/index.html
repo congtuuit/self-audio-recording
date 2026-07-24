@@ -46,20 +46,20 @@
           <div class="input-group">
             <label for="audioSourceSelect">Nguồn âm thanh thu:</label>
             <select id="audioSourceSelect">
-              <option value="mic" selected>🎙️ Chỉ Micro (Giọng nói của bạn)</option>
-              <option value="system">🔊 Chỉ Âm thanh hệ thống (Loa/Máy tính)</option>
+              <option value="system" selected>🔊 Chỉ Âm thanh hệ thống (Loa/Máy tính)</option>
+              <option value="mic">🎙️ Chỉ Micro (Giọng nói của bạn)</option>
               <option value="both">🎙️+🔊 Cả Micro & Âm thanh hệ thống (Hỗn hợp)</option>
             </select>
           </div>
           <div class="input-group">
-            <label for="recordingName">Tên bản ghi (tùy chọn):</label>
-            <input type="text" id="recordingName" placeholder="VD: Ghi_chu_cuoc_hop" autocomplete="off">
+            <label for="recordingName">Tên bản ghi:</label>
+            <input type="text" id="recordingName" placeholder="recording_1784918701" autocomplete="off">
           </div>
           <div class="input-group">
             <label for="languageSelect">Ngôn ngữ Transcript:</label>
             <select id="languageSelect">
-              <option value="vi-VN" selected>🇻🇳 Tiếng Việt (vi-VN)</option>
-              <option value="en-US">🇺🇸 Tiếng Anh (en-US)</option>
+              <option value="en-US" selected>🇺🇸 Tiếng Anh (en-US)</option>
+              <option value="vi-VN">🇻🇳 Tiếng Việt (vi-VN)</option>
               <option value="ja-JP">🇯🇵 Tiếng Nhật (ja-JP)</option>
               <option value="zh-CN">🇨🇳 Tiếng Trung (zh-CN)</option>
             </select>
@@ -93,6 +93,9 @@
         <div class="card-header">
           <h2>📝 Transcript Real-time</h2>
           <div class="card-actions">
+            <button id="btnTestSpeech" class="btn-sm btn-ghost" title="Thử nghiệm nhận diện giọng nói">
+              🧪 Thử Micro Speech
+            </button>
             <button id="btnCopyTranscript" class="btn-sm btn-ghost" title="Copy văn bản">
               📋 Copy
             </button>

@@ -35,15 +35,25 @@ let isRecording = false;
 let isPaused = false;
 let sampleRate = 44100;
 
-// Web Speech Recognition
+// Web Speech Recognition State
 let recognition = null;
 let finalTranscript = '';
 let interimTranscript = '';
 let speechActive = false;
+let isRecognitionRunning = false;
+let isTestingSpeech = false;
 
 // --- 1. INITIALIZATION ---
 
+function setDefaultRecordingName() {
+  const unixTimestamp = Math.floor(Date.now() / 1000);
+  if (recordingNameInput) {
+    recordingNameInput.value = `recording_${unixTimestamp}`;
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  setDefaultRecordingName();
   initSpeechRecognition();
   loadRecordingsLibrary();
   drawIdleVisualizer();
@@ -56,6 +66,11 @@ document.addEventListener('DOMContentLoaded', () => {
   btnClearTranscript.addEventListener('click', clearTranscript);
   btnRefreshLibrary.addEventListener('click', loadRecordingsLibrary);
   languageSelect.addEventListener('change', onLanguageChange);
+  
+  const btnTestSpeech = document.getElementById('btnTestSpeech');
+  if (btnTestSpeech) {
+    btnTestSpeech.addEventListener('click', toggleTestSpeech);
+  }
 });
 
 // --- 2. WEB SPEECH RECOGNITION (TRANSCRIPT) ---
@@ -64,53 +79,138 @@ function initSpeechRecognition() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
   if (!SpeechRecognition) {
-    speechStatus.textContent = '⚠️ Trình duyệt không hỗ trợ Web Speech API (khuyên dùng Chrome/Edge)';
+    speechStatus.textContent = '⚠️ Trình duyệt không hỗ trợ Web Speech API (Vui lòng dùng Google Chrome / MS Edge)';
     speechStatus.style.color = '#ef4444';
+    console.warn('SpeechRecognition API not available in this browser environment.');
     return;
   }
 
-  recognition = new SpeechRecognition();
-  recognition.continuous = true;
-  recognition.interimResults = true;
+  try {
+    recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = languageSelect.value;
+
+    recognition.onstart = () => {
+      isRecognitionRunning = true;
+      speechStatus.textContent = '🟢 Speech API: Đang lắng nghe giọng nói...';
+      speechStatus.style.color = '#10b981';
+      console.log('Web Speech API started successfully.');
+    };
+
+    recognition.onresult = (event) => {
+      interimTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript + ' ';
+        } else {
+          interimTranscript += event.results[i][0].transcript;
+        }
+      }
+      updateTranscriptUI();
+    };
+
+    recognition.onerror = (event) => {
+      console.warn('Speech Recognition error event:', event.error);
+      isRecognitionRunning = false;
+
+      if (event.error === 'not-allowed') {
+        speechStatus.textContent = '❌ Chưa cấp quyền Micro cho Speech Recognition';
+        speechStatus.style.color = '#ef4444';
+        showToast('❌ Vui lòng cho phép quyền Micro trên thanh địa chỉ trình duyệt!');
+      } else if (event.error === 'network') {
+        speechStatus.textContent = '❌ Lỗi mạng / Không kết nối được server Google Speech';
+        speechStatus.style.color = '#ef4444';
+      } else if (event.error === 'no-speech') {
+        speechStatus.textContent = '🟡 Đang chờ nhận giọng nói...';
+        speechStatus.style.color = '#f59e0b';
+      } else if (event.error === 'audio-capture') {
+        speechStatus.textContent = '❌ Không tìm thấy Micro khả dụng!';
+        speechStatus.style.color = '#ef4444';
+      } else {
+        speechStatus.textContent = `⚠️ Lỗi Speech API: ${event.error}`;
+        speechStatus.style.color = '#f59e0b';
+      }
+    };
+
+    recognition.onend = () => {
+      isRecognitionRunning = false;
+      console.log('Web Speech API stopped.');
+
+      // Tự động khởi động lại mượt mà nếu vẫn đang trong chế độ thu âm hoặc testing
+      if ((speechActive || isTestingSpeech) && (isRecording || isTestingSpeech) && !isPaused) {
+        setTimeout(() => {
+          if ((speechActive || isTestingSpeech) && !isRecognitionRunning) {
+            startSpeechRecognition();
+          }
+        }, 300);
+      } else {
+        speechStatus.textContent = '⚡ Web Speech API (Đã dừng)';
+        speechStatus.style.color = '#9ca3af';
+      }
+    };
+
+    speechStatus.textContent = '⚡ Web Speech API (Sẵn sàng)';
+    speechStatus.style.color = '#10b981';
+  } catch (err) {
+    console.error('Speech Recognition init error:', err);
+    speechStatus.textContent = '❌ Không thể khởi tạo Speech Recognition';
+    speechStatus.style.color = '#ef4444';
+  }
+}
+
+function startSpeechRecognition() {
+  if (!recognition) {
+    showToast('⚠️ Trình duyệt của bạn không hỗ trợ Web Speech API. Khuyên dùng Google Chrome hoặc Microsoft Edge!');
+    return;
+  }
+  if (isRecognitionRunning) return;
+
+  speechActive = true;
   recognition.lang = languageSelect.value;
 
-  recognition.onresult = (event) => {
-    interimTranscript = '';
-    for (let i = event.resultIndex; i < event.results.length; ++i) {
-      if (event.results[i].isFinal) {
-        finalTranscript += event.results[i][0].transcript + ' ';
-      } else {
-        interimTranscript += event.results[i][0].transcript;
-      }
-    }
-    updateTranscriptUI();
-  };
+  try {
+    recognition.start();
+  } catch (err) {
+    console.warn('Failed to call recognition.start():', err);
+  }
+}
 
-  recognition.onerror = (event) => {
-    console.warn('Speech Recognition error:', event.error);
-    if (event.error === 'not-allowed') {
-      speechStatus.textContent = '❌ Chưa cấp quyền micro cho Speech Recognition';
-    }
-  };
+function stopSpeechRecognition() {
+  speechActive = false;
+  isTestingSpeech = false;
+  if (recognition && isRecognitionRunning) {
+    try {
+      recognition.stop();
+    } catch (e) {}
+  }
+  isRecognitionRunning = false;
+  speechStatus.textContent = '⚡ Web Speech API (Đã dừng)';
+  speechStatus.style.color = '#9ca3af';
+}
 
-  recognition.onend = () => {
-    // Tự động khởi động lại nếu vẫn đang trong chế độ thu âm
-    if (speechActive && isRecording && !isPaused) {
-      try {
-        recognition.start();
-      } catch (e) {
-        console.warn('Cannot restart recognition:', e);
-      }
-    }
-  };
-
-  speechStatus.textContent = '⚡ Web Speech API (Đã sẵn sàng)';
+function toggleTestSpeech() {
+  const btn = document.getElementById('btnTestSpeech');
+  if (isTestingSpeech) {
+    stopSpeechRecognition();
+    if (btn) btn.textContent = '🧪 Thử Micro Speech';
+    showToast('Đã dừng thử nghiệm Speech API');
+  } else {
+    isTestingSpeech = true;
+    startSpeechRecognition();
+    if (btn) btn.textContent = '⏹️ Dừng thử Speech';
+    showToast('🧪 Đã bật thử nghiệm Speech Recognition. Hãy thử nói vào Micro!');
+  }
 }
 
 function onLanguageChange() {
   if (recognition) {
     recognition.lang = languageSelect.value;
     showToast(`Đã đổi ngôn ngữ transcript sang: ${languageSelect.options[languageSelect.selectedIndex].text}`);
+    if (isRecognitionRunning) {
+      stopSpeechRecognition();
+      setTimeout(startSpeechRecognition, 400);
+    }
   }
 }
 
@@ -155,6 +255,14 @@ function clearTranscript() {
 async function startRecording() {
   const audioSourceMode = document.getElementById('audioSourceSelect').value;
   activeStreams = [];
+
+  // Reset Transcript cho bản thu mới
+  finalTranscript = '';
+  interimTranscript = '';
+  updateTranscriptUI();
+
+  // Kích hoạt Web Speech API ngay trong user gesture tick
+  startSpeechRecognition();
 
   // Khởi tạo AudioContext
   audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -238,16 +346,6 @@ async function startRecording() {
   analyserNode.connect(scriptProcessorNode);
   scriptProcessorNode.connect(audioContext.destination);
 
-  // Bắt đầu Speech Recognition nếu thu từ Micro hoặc Mixed
-  if (recognition) {
-    speechActive = true;
-    try {
-      recognition.start();
-    } catch (e) {
-      console.warn('Speech recognition start failed:', e);
-    }
-  }
-
   // Update State
   isRecording = true;
   isPaused = false;
@@ -309,15 +407,10 @@ async function stopRecording() {
 
   isRecording = false;
   isPaused = false;
-  speechActive = false;
   clearInterval(timerInterval);
 
   // Dừng Speech Recognition
-  if (recognition) {
-    try {
-      recognition.stop();
-    } catch (e) {}
-  }
+  stopSpeechRecognition();
 
   // Dừng tất cả Media Streams & Audio Tracks
   activeStreams.forEach(stream => {
@@ -350,11 +443,12 @@ async function stopRecording() {
   // Upload lên Node.js server
   await saveRecordingToServer(wavBlob, fullTranscriptText, customName);
 
-  // Reset Timer
+  // Reset Timer & Update Name
   elapsedTime = 0;
   timerDisplay.textContent = '00:00:00';
   statusBadge.className = 'status-badge';
   statusText.textContent = 'Sẵn sàng';
+  setDefaultRecordingName();
 
   drawIdleVisualizer();
 }
@@ -458,7 +552,6 @@ function drawVisualizer() {
     // Gradient màu sóng âm sinh động
     const gradient = canvasCtx.createLinearGradient(0, canvas.height, 0, 0);
     gradient.addColorStop(0, '#6366f1');
-    gradient.addColorStop(0.5, '#ec4899');
     gradient.addColorStop(1, '#ef4444');
 
     canvasCtx.fillStyle = gradient;
@@ -494,7 +587,8 @@ async function saveRecordingToServer(wavBlob, transcriptText, customName) {
       const payload = {
         audioBase64: base64Audio,
         transcript: transcriptText,
-        customName: customName
+        customName: customName,
+        language: languageSelect.value
       };
 
       const response = await fetch('/api/save-recording', {
@@ -549,6 +643,7 @@ async function loadRecordingsLibrary() {
           <audio controls src="/recordings/${rec.filename}"></audio>
           <a href="/recordings/${rec.filename}" download="${rec.filename}" class="btn-ghost" title="Tải file WAV">⬇️ .WAV</a>
           <a href="/recordings/${rec.txtFilename}" download="${rec.txtFilename}" class="btn-ghost" title="Tải file Text">📄 .TXT</a>
+          <button class="btn-ghost" onclick="triggerTranscribe('${rec.id}')" title="Phân tích lại Transcript từ file WAV này">🤖 AI Transcribe</button>
           <button class="btn-ghost" onclick="copyText('${escapeQuotes(rec.transcript)}')" title="Copy transcript">📋 Copy</button>
           <button class="btn-ghost" onclick="deleteRecording('${rec.id}')" style="color: #ef4444;" title="Xóa bản ghi">🗑️ Xóa</button>
         </div>
@@ -558,6 +653,27 @@ async function loadRecordingsLibrary() {
   } catch (err) {
     console.error('Load library error:', err);
     recordingsList.innerHTML = '<p class="placeholder-text" style="color: #ef4444;">Không thể kết nối đến server để lấy danh sách bản ghi.</p>';
+  }
+}
+
+async function triggerTranscribe(id) {
+  try {
+    showToast(`🤖 Đang phân tích âm thanh cho file [${id}]...`);
+    const lang = languageSelect.value;
+    const res = await fetch(`/api/transcribe/${id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ language: lang })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(`✅ Đã tạo transcript thành công cho [${id}]!`);
+      loadRecordingsLibrary();
+    } else {
+      showToast(`❌ Lỗi phân tích transcript: ${data.error}`);
+    }
+  } catch (err) {
+    showToast('❌ Lỗi khi gửi yêu cầu phân tích transcript');
   }
 }
 

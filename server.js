@@ -82,6 +82,27 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+const { exec } = require('child_process');
+
+function runPythonTranscribe(baseName, lang = 'vi-VN') {
+  return new Promise((resolve) => {
+    const wavPath = path.join(RECORDINGS_DIR, `${baseName}.wav`);
+    const scriptPath = path.join(__dirname, 'transcribe.py');
+    const cmd = `python "${scriptPath}" "${wavPath}" ${lang}`;
+
+    console.log(`[*] Running auto-transcribe background process: ${cmd}`);
+    exec(cmd, { cwd: __dirname }, (error, stdout, stderr) => {
+      const txtPath = path.join(RECORDINGS_DIR, `${baseName}.txt`);
+      if (fs.existsSync(txtPath)) {
+        const text = fs.readFileSync(txtPath, 'utf-8');
+        resolve(text);
+      } else {
+        resolve('');
+      }
+    });
+  });
+}
+
   // 2. POST /api/save-recording - Lưu file WAV và Transcript (.txt)
   if (req.method === 'POST' && pathname === '/api/save-recording') {
     let body = '';
@@ -89,10 +110,10 @@ const server = http.createServer((req, res) => {
       body += chunk.toString();
     });
 
-    req.on('end', () => {
+    req.on('end', async () => {
       try {
         const data = JSON.parse(body);
-        const { audioBase64, transcript, customName } = data;
+        const { audioBase64, transcript, customName, language } = data;
 
         if (!audioBase64) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -114,10 +135,22 @@ const server = http.createServer((req, res) => {
         const audioBuffer = Buffer.from(base64Data, 'base64');
         fs.writeFileSync(wavPath, audioBuffer);
 
-        // Ghi file transcript văn bản
-        fs.writeFileSync(txtPath, transcript || '(Không có văn bản transcript)', 'utf-8');
+        // Ghi file transcript ban đầu
+        let finalTranscript = (transcript && transcript.trim()) ? transcript : '(Đang tự động xử lý transcript...)';
+        fs.writeFileSync(txtPath, finalTranscript, 'utf-8');
 
-        console.log(`[+] Đã lưu thành công: ${baseName}.wav & ${baseName}.txt`);
+        console.log(`[+] Đã lưu file WAV: ${baseName}.wav`);
+
+        // Nếu transcript rỗng (ví dụ thu từ Âm thanh Hệ Thống), tự động chạy Python transcribe ngay lập tức
+        if (!transcript || !transcript.trim() || transcript === '(Không có văn bản transcript)') {
+          console.log(`[*] Live transcript is empty. Triggering Python AI Transcribe for ${baseName}...`);
+          finalTranscript = await runPythonTranscribe(baseName, language || 'en-US');
+          if (!finalTranscript) {
+            finalTranscript = '(Không thể nhận dạng được giọng nói trong file audio này)';
+          }
+          // Cập nhật lại nội dung file .txt trên đĩa cứng
+          fs.writeFileSync(txtPath, finalTranscript, 'utf-8');
+        }
 
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({
@@ -129,11 +162,32 @@ const server = http.createServer((req, res) => {
             txtFilename: `${baseName}.txt`,
             size: audioBuffer.length,
             createdAt: now,
-            transcript: transcript || ''
+            transcript: finalTranscript
           }
         }));
       } catch (err) {
         console.error('Lỗi khi lưu file thu âm:', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // 2b. POST /api/transcribe/:id - Gọi Python xử lý transcript thủ công từ file WAV
+  if (req.method === 'POST' && pathname.startsWith('/api/transcribe/')) {
+    const id = pathname.replace('/api/transcribe/', '');
+    let body = '';
+    req.on('data', chunk => { body += chunk.toString(); });
+    req.on('end', async () => {
+      try {
+        const data = body ? JSON.parse(body) : {};
+        const lang = data.language || 'vi-VN';
+        console.log(`[*] Requesting manual transcription for ${id} (lang: ${lang})...`);
+        const text = await runPythonTranscribe(id, lang);
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ success: true, transcript: text }));
+      } catch (err) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false, error: err.message }));
       }
