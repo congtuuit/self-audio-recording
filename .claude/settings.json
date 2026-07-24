@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(python transcribe.py \"recordings/REC_recording_1784895886_20260724123019.wav\" en-US)",
+      "PowerShell(python -c \"import speech_recognition; import soundfile; print\\('OK: speech_recognition', speech_recognition.__version__\\); print\\('OK: soundfile', soundfile.__version__\\)\")",
+      "PowerShell(python -c \"import soundfile as sf; data, rate = sf.read\\('recordings/REC_recording_1784895886_20260724123019.wav'\\); print\\('Shape:', data.shape, 'Rate:', rate, 'Duration:', len\\(data\\)/rate\\)\")",
+      "Skill(e2e-test-runner)",
+      "Skill(e2e-test-runner:*)",
+      "Bash(node server.js)",
+      "PowerShell(node server.js)",
+      "PowerShell(python test_full_flow.py)",
+      "PowerShell(Stop-Process -Id \\(Get-NetTCPConnection -LocalPort 3000\\).OwningProcess -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(python transcribe.py recordings/REC_recording_1784892649_20260724113152.wav en-US)",
+      "PowerShell(npm run build)",
+      "Workflow(e2e-test-runner)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Process -Name node -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Process node -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Force)",
+      "PowerShell(Get-CimInstance Win32_Process -Filter \"Name = 'node.exe'\")",
+      "Bash(netstat -ano)",
+      "PowerShell(Get-Process -Id 20212)",
+      "PowerShell(Stop-Process -Id 20212 -Force)"
+    ],
+    "additionalDirectories": [
+      "D:\\git\\self-audio-recording\\recordings"
+    ]
+  },
+  "commands": {
+    "npm start": {
+      "approved": true
+    },
+    "node server.js": {
+      "approved": true
+    },
+    "python test_full_flow.py": {
+      "approved": true
+    }
+  }
+}

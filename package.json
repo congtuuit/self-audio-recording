@@ -1,18 +1,41 @@
 {
   "name": "self-audio-recording",
   "version": "1.0.0",
-  "description": "Mini tool thu âm & transcript tiếng Việt / Anh trên máy cá nhân",
+  "description": "Premium AI Shadowing SaaS Studio for English Practice",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev-server": "node server.js",
+    "dev": "concurrently \"npm run dev-server\" \"vite\"",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
   },
   "keywords": [
     "audio-recorder",
     "transcript",
     "speech-to-text",
-    "wav"
+    "wav",
+    "shadowing",
+    "english-learning",
+    "saas"
   ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "framer-motion": "^11.1.7",
+    "lucide-react": "^0.368.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.19",
+    "concurrently": "^8.2.2",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.2.2",
+    "vite": "^5.2.0"
+  }
 }

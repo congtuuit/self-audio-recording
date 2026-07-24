@@ -1,10 +1,11 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { exec } = require('child_process');
 
 const PORT = process.env.PORT || 3000;
 const RECORDINGS_DIR = path.join(__dirname, 'recordings');
-const PUBLIC_DIR = path.join(__dirname, 'public');
+const PUBLIC_DIR = path.join(__dirname, 'dist');
 
 // Đảm bảo thư mục recordings tồn tại
 if (!fs.existsSync(RECORDINGS_DIR)) {
@@ -23,6 +24,36 @@ const MIME_TYPES = {
   '.ico': 'image/x-icon',
   '.svg': 'image/svg+xml'
 };
+
+// Hàm chạy Python bóc tách chữ (Transcription)
+function runPythonTranscribe(baseName, lang = 'vi-VN') {
+  return new Promise((resolve, reject) => {
+    const wavPath = path.join(RECORDINGS_DIR, `${baseName}.wav`);
+    const scriptPath = path.join(__dirname, 'transcribe.py');
+    const cmd = `python "${scriptPath}" "${wavPath}" ${lang}`;
+
+    console.log(`[*] Running auto-transcribe: ${cmd}`);
+    exec(cmd, { cwd: __dirname }, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`[-] Python execute error: ${error.message}`);
+      }
+      if (stderr) {
+        console.error(`[-] Python stderr: ${stderr}`);
+      }
+      if (stdout) {
+        console.log(`[*] Python stdout: ${stdout}`);
+      }
+
+      const txtPath = path.join(RECORDINGS_DIR, `${baseName}.txt`);
+      if (fs.existsSync(txtPath)) {
+        const text = fs.readFileSync(txtPath, 'utf-8');
+        resolve(text);
+      } else {
+        resolve('');
+      }
+    });
+  });
+}
 
 const server = http.createServer((req, res) => {
   // Thêm CORS headers cho giao diện local
@@ -56,7 +87,7 @@ const server = http.createServer((req, res) => {
         const stats = fs.statSync(wavPath);
         let transcript = '';
         let words = [];
-        
+
         if (fs.existsSync(txtPath)) {
           transcript = fs.readFileSync(txtPath, 'utf-8');
         }
@@ -68,6 +99,8 @@ const server = http.createServer((req, res) => {
           } catch (e) {}
         }
 
+        const isProcessing = transcript.includes('(Đang tự động xử lý transcript...)');
+
         return {
           id: baseName,
           filename: wavFile,
@@ -76,7 +109,8 @@ const server = http.createServer((req, res) => {
           size: stats.size,
           createdAt: stats.birthtime || stats.mtime,
           transcript: transcript,
-          words: words
+          words: words,
+          processing: isProcessing
         };
       });
 
@@ -93,27 +127,6 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-const { exec } = require('child_process');
-
-function runPythonTranscribe(baseName, lang = 'vi-VN') {
-  return new Promise((resolve) => {
-    const wavPath = path.join(RECORDINGS_DIR, `${baseName}.wav`);
-    const scriptPath = path.join(__dirname, 'transcribe.py');
-    const cmd = `python "${scriptPath}" "${wavPath}" ${lang}`;
-
-    console.log(`[*] Running auto-transcribe background process: ${cmd}`);
-    exec(cmd, { cwd: __dirname }, (error, stdout, stderr) => {
-      const txtPath = path.join(RECORDINGS_DIR, `${baseName}.txt`);
-      if (fs.existsSync(txtPath)) {
-        const text = fs.readFileSync(txtPath, 'utf-8');
-        resolve(text);
-      } else {
-        resolve('');
-      }
-    });
-  });
-}
-
   // 2. POST /api/save-recording - Lưu file WAV và Transcript (.txt)
   if (req.method === 'POST' && pathname === '/api/save-recording') {
     let body = '';
@@ -121,7 +134,7 @@ function runPythonTranscribe(baseName, lang = 'vi-VN') {
       body += chunk.toString();
     });
 
-    req.on('end', async () => {
+    req.on('end', () => {
       try {
         const data = JSON.parse(body);
         const { audioBase64, transcript, customName, language } = data;
@@ -152,28 +165,37 @@ function runPythonTranscribe(baseName, lang = 'vi-VN') {
 
         console.log(`[+] Đã lưu file WAV: ${baseName}.wav`);
 
-        // Nếu transcript rỗng (ví dụ thu từ Âm thanh Hệ Thống), tự động chạy Python transcribe ngay lập tức
+        let processing = false;
+        // Nếu transcript rỗng (ví dụ thu từ Âm thanh Hệ Thống), tự động chạy Python transcribe NGẦM (background)
         if (!transcript || !transcript.trim() || transcript === '(Không có văn bản transcript)') {
-          console.log(`[*] Live transcript is empty. Triggering Python AI Transcribe for ${baseName}...`);
-          finalTranscript = await runPythonTranscribe(baseName, language || 'en-US');
-          if (!finalTranscript) {
-            finalTranscript = '(Không thể nhận dạng được giọng nói trong file audio này)';
-          }
-          // Cập nhật lại nội dung file .txt trên đĩa cứng
-          fs.writeFileSync(txtPath, finalTranscript, 'utf-8');
+          console.log(`[*] Live transcript is empty. Triggering Python AI Transcribe in background for ${baseName}...`);
+          processing = true;
+
+          // Chạy ngầm hoàn toàn không await chặn luồng phản hồi HTTP
+          runPythonTranscribe(baseName, language || 'en-US').then((text) => {
+            if (!text || text.includes('(Đang tự động xử lý transcript...)')) {
+              text = '(Không thể nhận dạng được giọng nói trong file audio này)';
+            }
+            fs.writeFileSync(txtPath, text, 'utf-8');
+            console.log(`[+] Background transcription finished for ${baseName}`);
+          }).catch((err) => {
+            console.error(`[-] Background transcription failed for ${baseName}:`, err);
+            fs.writeFileSync(txtPath, '(Lỗi khi tự động xử lý transcript)', 'utf-8');
+          });
         }
 
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({
           success: true,
-          message: 'Lưu bản ghi thành công!',
+          message: processing ? 'Đang xử lý bóc chữ dưới nền...' : 'Lưu bản ghi thành công!',
           recording: {
             id: baseName,
             filename: `${baseName}.wav`,
             txtFilename: `${baseName}.txt`,
             size: audioBuffer.length,
             createdAt: now,
-            transcript: finalTranscript
+            transcript: finalTranscript,
+            processing: processing
           }
         }));
       } catch (err) {
@@ -223,10 +245,12 @@ function runPythonTranscribe(baseName, lang = 'vi-VN') {
     const id = pathname.replace('/api/recordings/', '');
     const wavPath = path.join(RECORDINGS_DIR, `${id}.wav`);
     const txtPath = path.join(RECORDINGS_DIR, `${id}.txt`);
+    const jsonPath = path.join(RECORDINGS_DIR, `${id}.json`);
 
     try {
       if (fs.existsSync(wavPath)) fs.unlinkSync(wavPath);
       if (fs.existsSync(txtPath)) fs.unlinkSync(txtPath);
+      if (fs.existsSync(jsonPath)) fs.unlinkSync(jsonPath);
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true, message: 'Đã xóa bản ghi' }));
@@ -245,8 +269,47 @@ function runPythonTranscribe(baseName, lang = 'vi-VN') {
     if (fs.existsSync(filePath)) {
       const ext = path.extname(filePath).toLowerCase();
       const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-      res.writeHead(200, { 'Content-Type': contentType });
-      fs.createReadStream(filePath).pipe(res);
+      const stat = fs.statSync(filePath);
+      const totalSize = stat.size;
+
+      // Xử lý HTTP Range cho trình duyệt tua mượt (chủ yếu là file âm thanh .wav)
+      const range = req.headers.range;
+      if (range && (ext === '.wav' || ext === '.mp3' || ext === '.webm' || ext === '.mp4')) {
+        const parts = range.replace(/bytes=/, "").split("-");
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : totalSize - 1;
+
+        if (start >= totalSize || end >= totalSize) {
+          res.writeHead(416, { 'Content-Range': `bytes */${totalSize}` });
+          return res.end();
+        }
+
+        const chunksize = (end - start) + 1;
+        const fileStream = fs.createReadStream(filePath, { start, end });
+
+        res.writeHead(206, {
+          'Content-Range': `bytes ${start}-${end}/${totalSize}`,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': chunksize,
+          'Content-Type': contentType,
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        });
+
+        fileStream.pipe(res);
+
+        // Hủy stream nếu client ngắt kết nối (ví dụ khi tua nhanh liên tiếp)
+        req.on('close', () => {
+          fileStream.destroy();
+        });
+      } else {
+        res.writeHead(200, {
+          'Content-Length': totalSize,
+          'Content-Type': contentType
+        });
+        fs.createReadStream(filePath).pipe(res);
+      }
       return;
     } else {
       res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });

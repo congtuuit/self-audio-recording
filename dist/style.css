@@ -22,7 +22,7 @@
 
 body {
   background-color: var(--bg-primary);
-  background-image: 
+  background-image:
     radial-gradient(at 15% 15%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
     radial-gradient(at 85% 85%, rgba(239, 68, 68, 0.1) 0px, transparent 50%);
   color: var(--text-main);
@@ -139,7 +139,7 @@ body {
 /* Layout Grid */
 .main-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1.2fr 1fr;
   gap: 1.5rem;
 }
 
@@ -293,6 +293,11 @@ canvas {
   background: rgba(255, 255, 255, 0.05);
 }
 
+.btn-sm {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+}
+
 .btn-outline {
   background: transparent;
   border: 1px solid var(--primary-color);
@@ -306,25 +311,48 @@ canvas {
   background: rgba(99, 102, 241, 0.1);
 }
 
-/* Transcript Box */
-.transcript-card {
-  display: flex;
-  flex-direction: column;
+.btn-outline-loop {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--bg-card-border);
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
+.btn-outline-loop.active {
+  background: rgba(239, 68, 68, 0.25);
+  color: var(--accent-red);
+  border-color: var(--accent-red);
+}
+
+/* Transcript Box (chung cho cả Live và Learning) */
 .transcript-box {
   background: rgba(0, 0, 0, 0.4);
   border: 1px solid var(--bg-card-border);
   border-radius: 12px;
   padding: 1rem;
-  min-height: 260px;
-  max-height: 320px;
-  overflow-y: auto;
   font-size: 1rem;
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
-  flex: 1;
+  overflow-y: auto;
+}
+
+/* Mini Transcript (dùng khi thu âm trực tiếp) */
+.mini-transcript {
+  min-height: 80px;
+  max-height: 140px;
+  font-size: 0.9rem;
+  padding: 0.75rem;
+}
+
+/* Learning Transcript (box lớn ở vùng học tập) */
+.learning-transcript-box {
+  min-height: 200px;
+  max-height: 360px;
 }
 
 .placeholder-text {
@@ -347,43 +375,107 @@ canvas {
   display: inline-block;
   cursor: pointer;
   padding: 0.1rem 0.3rem;
-  margin: 0.1rem 0.1rem;
+  margin: 0.05rem 0.1rem;
   border-radius: 6px;
-  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.06s ease-out;
   user-select: none;
 }
 
 .interactive-word:hover {
   background: rgba(99, 102, 241, 0.3);
   color: #fff;
-  transform: translateY(-1px);
 }
 
 .interactive-word.active-word {
   background: linear-gradient(135deg, #6366f1 0%, #ec4899 100%);
   color: #ffffff;
   font-weight: 600;
-  box-shadow: 0 0 14px rgba(99, 102, 241, 0.7);
-  transform: scale(1.12);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
   border-radius: 6px;
 }
 
-.transcript-footer {
+/* ============================================ */
+/* Focus Learning Workspace                     */
+/* ============================================ */
+
+.learning-workspace-card {
+  border-color: rgba(99, 102, 241, 0.25);
+  box-shadow: 0 8px 32px rgba(99, 102, 241, 0.12);
+}
+
+.learning-lesson-title {
+  font-size: 0.95rem;
+  color: var(--primary-color);
+  font-weight: 600;
+  margin-top: 0.25rem;
+}
+
+.learning-controls-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-top: 0.75rem;
-  font-size: 0.8rem;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 10px;
+  flex-wrap: wrap;
+}
+
+.learning-controls-row audio {
+  height: 40px;
+  flex: 1;
+  min-width: 200px;
+  max-width: 400px;
+}
+
+.learning-options {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.option-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
   color: var(--text-muted);
 }
 
-/* Library List */
+.option-item select {
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  border: 1px solid var(--bg-card-border);
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-family: inherit;
+}
+
+.learning-footer {
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ============================================ */
+/* Library Card (Cột phải)                      */
+/* ============================================ */
+
+.library-card {
+  display: flex;
+  flex-direction: column;
+}
+
 .recordings-list-container {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  max-height: 350px;
+  max-height: 520px;
   overflow-y: auto;
+  flex: 1;
 }
 
 .recording-item {
@@ -399,6 +491,10 @@ canvas {
 
 .recording-item:hover {
   border-color: rgba(99, 102, 241, 0.4);
+}
+
+.recording-item.processing {
+  border-color: rgba(245, 158, 11, 0.3);
 }
 
 .rec-info {
@@ -428,21 +524,38 @@ canvas {
   padding: 0.6rem 0.8rem;
   border-radius: 6px;
   border-left: 3px solid var(--primary-color);
-  max-height: 80px;
+  max-height: 60px;
   overflow-y: auto;
+}
+
+.rec-processing-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--accent-amber);
+  background: rgba(245, 158, 11, 0.1);
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  animation: pulse-processing 2s infinite;
+}
+
+@keyframes pulse-processing {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 .rec-actions {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
   flex-wrap: wrap;
 }
 
-audio {
-  height: 36px;
+.rec-actions audio {
+  height: 32px;
   flex: 1;
-  min-width: 220px;
+  min-width: 180px;
 }
 
 /* Toast */
@@ -461,6 +574,7 @@ audio {
   transition: all 0.3s ease;
   pointer-events: none;
   z-index: 100;
+  max-width: 420px;
 }
 
 .toast.show {

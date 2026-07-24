@@ -63,11 +63,11 @@ def transcribe_audio(wav_path, lang='en-US'):
             audio_obj = recognizer.record(src)
 
         try:
-            chunk_text = recognizer.recognize_google(audio_obj, language=lang)
+            chunk_text = recognizer.recognize_google(audio_obj, language=lang, timeout=10)
         except Exception:
             alt_lang = 'en-US' if lang.startswith('vi') else 'vi-VN'
             try:
-                chunk_text = recognizer.recognize_google(audio_obj, language=alt_lang)
+                chunk_text = recognizer.recognize_google(audio_obj, language=alt_lang, timeout=10)
             except Exception:
                 chunk_text = ""
 

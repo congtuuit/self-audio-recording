@@ -27,11 +27,15 @@ const TRANSLATIONS = {
     speechActive: '⚡ Web Speech API (Đã sẵn sàng)',
     headerLibrary: '📁 Danh sách các bản ghi & Bài học đã lưu',
     btnRefresh: '🔄 Làm mới danh sách',
-    lblSpeed: 'Tốc độ phát:',
+    lblSpeed: 'Tốc độ:',
     lblLoop: '🔂 Lặp câu (Shadowing)',
     btnAiTranscribe: '🤖 AI Transcribe',
     btnDelete: '🗑️ Xóa',
-    confirmDelete: 'Bạn có chắc chắn muốn xóa bản ghi này không?'
+    confirmDelete: 'Bạn có chắc chắn muốn xóa bản ghi này không?',
+    headerLiveTranscript: '📝 Live Transcript (Thu âm trực tiếp)',
+    placeholderLiveTranscript: 'Chữ thu âm trực tiếp sẽ hiển thị tại đây khi bạn nói...',
+    headerLearningWorkspace: '🎓 Không gian học Tiếng Anh tương tác',
+    btnCloseLearning: '❌ Đóng bài học'
   },
   'en-US': {
     brandSubtitle: 'Screen & Audio Studio with Interactive English Learning',
@@ -63,7 +67,11 @@ const TRANSLATIONS = {
     lblLoop: '🔂 Shadowing Loop',
     btnAiTranscribe: '🤖 AI Transcribe',
     btnDelete: '🗑️ Delete',
-    confirmDelete: 'Are you sure you want to delete this recording?'
+    confirmDelete: 'Are you sure you want to delete this recording?',
+    headerLiveTranscript: '📝 Live Transcript (Real-time)',
+    placeholderLiveTranscript: 'Real-time transcript will appear here when you speak...',
+    headerLearningWorkspace: '🎓 Interactive English Learning Workspace',
+    btnCloseLearning: '❌ Close Lesson'
   }
 };
 
