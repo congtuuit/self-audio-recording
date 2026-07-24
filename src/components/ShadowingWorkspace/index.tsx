@@ -204,8 +204,11 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
     if (!cleanWord) return;
 
     const target = e.currentTarget;
+    const container = transcriptRef.current;
+    if (!container) return;
+
     const x = target.offsetLeft + target.offsetWidth / 2;
-    const y = target.offsetTop + target.offsetHeight + 6;
+    const y = target.offsetTop + target.offsetHeight + 6 - container.scrollTop + container.offsetTop;
 
     setHoveredWordInfo({
       word: rawWord,
@@ -519,46 +522,46 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
               );
             })}
           </div>
-
-          {/* Floating Glassmorphic Tooltip on Word Hover */}
-          <AnimatePresence>
-            {hoveredWordInfo && (
-              <motion.div
-                initial={{ opacity: 0, y: -6, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -6, scale: 0.95 }}
-                transition={{ duration: 0.15 }}
-                style={{
-                  left: `${Math.max(10, Math.min(hoveredWordInfo.x - 120, 320))}px`,
-                  top: `${hoveredWordInfo.y}px`
-                }}
-                className="absolute z-40 w-60 p-3 rounded-xl bg-cardSecondary/95 border border-accent/40 shadow-2xl backdrop-blur-lg text-white pointer-events-none"
-              >
-                <div className="flex items-center justify-between gap-1 border-b border-borderCustom/60 pb-1.5 mb-1.5">
-                  <span className="text-xs font-bold text-accent capitalize flex items-center gap-1">
-                    <BookOpen className="w-3 h-3 text-accent" />
-                    {hoveredWordInfo.cleanWord}
-                  </span>
-                  {dictCache[hoveredWordInfo.cleanWord]?.phonetic ? (
-                    <span className="text-[11px] font-mono text-emerald-400 font-semibold">
-                      {dictCache[hoveredWordInfo.cleanWord].phonetic}
-                    </span>
-                  ) : null}
-                </div>
-                {dictCache[hoveredWordInfo.cleanWord]?.loading ? (
-                  <div className="text-[10px] text-textMuted flex items-center gap-1.5 py-1">
-                    <span className="w-2 h-2 rounded-full bg-accent animate-ping"></span>
-                    Đang tra IPA & từ điển...
-                  </div>
-                ) : (
-                  <p className="text-[11px] text-textSecondary leading-snug line-clamp-3">
-                    {dictCache[hoveredWordInfo.cleanWord]?.meaning || 'Không tìm thấy định nghĩa'}
-                  </p>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
         </div>
+
+        {/* Floating Glassmorphic Tooltip on Word Hover */}
+        <AnimatePresence>
+          {hoveredWordInfo && (
+            <motion.div
+              initial={{ opacity: 0, y: -6, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -6, scale: 0.95 }}
+              transition={{ duration: 0.15 }}
+              style={{
+                left: `${Math.max(10, Math.min(hoveredWordInfo.x - 120, 320))}px`,
+                top: `${hoveredWordInfo.y}px`
+              }}
+              className="absolute z-40 w-60 p-3 rounded-xl bg-cardSecondary/95 border border-accent/40 shadow-2xl backdrop-blur-lg text-white pointer-events-none"
+            >
+              <div className="flex items-center justify-between gap-1 border-b border-borderCustom/60 pb-1.5 mb-1.5">
+                <span className="text-xs font-bold text-accent capitalize flex items-center gap-1">
+                  <BookOpen className="w-3 h-3 text-accent" />
+                  {hoveredWordInfo.cleanWord}
+                </span>
+                {dictCache[hoveredWordInfo.cleanWord]?.phonetic ? (
+                  <span className="text-[11px] font-mono text-emerald-400 font-semibold">
+                    {dictCache[hoveredWordInfo.cleanWord].phonetic}
+                  </span>
+                ) : null}
+              </div>
+              {dictCache[hoveredWordInfo.cleanWord]?.loading ? (
+                <div className="text-[10px] text-textMuted flex items-center gap-1.5 py-1">
+                  <span className="w-2 h-2 rounded-full bg-accent animate-ping"></span>
+                  Đang tra IPA & từ điển...
+                </div>
+              ) : (
+                <p className="text-[11px] text-textSecondary leading-snug line-clamp-3">
+                  {dictCache[hoveredWordInfo.cleanWord]?.meaning || 'Không tìm thấy định nghĩa'}
+                </p>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* User Voice Capture Studio for Shadowing */}
