@@ -63,6 +63,7 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
   const [currentTime, setCurrentTime] = useState(0);
   const [speed, setSpeed] = useState(1.0);
   const [isLoopActive, setIsLoopActive] = useState(false);
+  const [loopRange, setLoopRange] = useState<{ start: number; end: number } | null>(null);
   const [isTranscribingLesson, setIsTranscribingLesson] = useState(false);
   const [transcribeFinishedFlash, setTranscribeFinishedFlash] = useState(false);
   const [isUserHovering, setIsUserHovering] = useState(false);
@@ -211,6 +212,14 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
       if (audio.paused) {
         audio.play().catch(() => {});
       }
+
+      // Nếu đang bật chế độ Loop Word, cập nhật khoảng loop cho từ được click
+      if (isLoopActive) {
+        const clickedWord = sortedWords.find(w => w.start === start);
+        if (clickedWord) {
+          setLoopRange({ start: clickedWord.start, end: clickedWord.end });
+        }
+      }
     }
   };
 
@@ -307,10 +316,10 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
       }
     }
 
-    // Shadowing Loop (lặp câu)
-    if (isLoopActive && audioRef.current) {
-      if (time >= activeWord.end - 0.05) {
-        audioRef.current.currentTime = activeWord.start;
+    // Shadowing Loop (lặp từ được chọn)
+    if (isLoopActive && loopRange && audioRef.current) {
+      if (time >= loopRange.end - 0.02) {
+        audioRef.current.currentTime = loopRange.start;
       }
     }
   };
@@ -530,7 +539,21 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
 
           {/* Shadowing Loop toggle */}
           <button
-            onClick={() => setIsLoopActive(!isLoopActive)}
+            onClick={() => {
+              const nextLoopActive = !isLoopActive;
+              setIsLoopActive(nextLoopActive);
+              if (nextLoopActive && audioRef.current) {
+                const time = audioRef.current.currentTime;
+                const activeWord = sortedWords.find(w => time >= w.start && time <= w.end);
+                if (activeWord) {
+                  setLoopRange({ start: activeWord.start, end: activeWord.end });
+                } else if (sortedWords.length > 0) {
+                  setLoopRange({ start: sortedWords[0].start, end: sortedWords[0].end });
+                }
+              } else {
+                setLoopRange(null);
+              }
+            }}
             className={`px-3 py-2 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-colors ${
               isLoopActive
                 ? 'bg-danger/10 border-danger/30 text-danger glow-red'
