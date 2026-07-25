@@ -11,6 +11,7 @@ interface RecordingStudioProps {
   isPaused: boolean;
   elapsedTime: number;
   visualizerData: Uint8Array;
+  lang: string;
   onStartRecording: (sourceMode: 'mic' | 'system' | 'both' | 'screen') => void;
   onPauseRecording: () => void;
   onResumeRecording: () => void;
@@ -24,6 +25,7 @@ export const RecordingStudio: React.FC<RecordingStudioProps> = ({
   isPaused,
   elapsedTime,
   visualizerData,
+  lang,
   onStartRecording,
   onPauseRecording,
   onResumeRecording,
@@ -45,7 +47,7 @@ export const RecordingStudio: React.FC<RecordingStudioProps> = ({
     const recognition = new SpeechRecognitionAPI();
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = 'en-US';
+    recognition.lang = lang || 'en-US';
 
     recognition.onresult = (event: any) => {
       let finalStr = '';
@@ -65,7 +67,7 @@ export const RecordingStudio: React.FC<RecordingStudioProps> = ({
     return () => {
       recognition.stop();
     };
-  }, [isRecording, isPaused]);
+  }, [isRecording, isPaused, lang]);
 
   // Cập nhật điểm AI giả lập khi lưu bản ghi thành công
   useEffect(() => {

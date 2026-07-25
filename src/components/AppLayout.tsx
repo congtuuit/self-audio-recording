@@ -8,7 +8,7 @@ import { ShadowingWorkspace } from './ShadowingWorkspace';
 import { SettingsDialog } from './SettingsDialog';
 import { useRecordings } from '../hooks/useRecordings';
 import { useAudioRecorder } from '../hooks/useAudioRecorder';
-import { Recording } from '../types';
+import { Recording, VoicecraftSettings } from '../types';
 import { useDialog } from '../context/DialogContext';
 
 export const AppLayout: React.FC = () => {
@@ -19,8 +19,38 @@ export const AppLayout: React.FC = () => {
     saveRecording,
     deleteRecording,
     reTranscribe,
-    toggleFavorite
+    toggleFavorite,
+    importYouTube,
+    importFile
   } = useRecordings();
+
+  const [activeLesson, setActiveLesson] = useState<Recording | null>(null);
+  const [lang, setLang] = useState('en-US');
+  const [settings, setSettings] = useState<VoicecraftSettings>(() => {
+    try {
+      const stored = localStorage.getItem('voicecraft_settings');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        return {
+          whisperKey: parsed.whisperKey || parsed.openaiKey || '',
+          openaiKey: parsed.openaiKey || parsed.whisperKey || '',
+          geminiKey: parsed.geminiKey || '',
+          geminiModel: parsed.geminiModel || 'gemini-2.0-flash',
+          openaiModel: parsed.openaiModel || 'gpt-4o-mini',
+          sampleRate: parsed.sampleRate ? Number(parsed.sampleRate) : 44100,
+          autoGain: parsed.autoGain !== undefined ? Boolean(parsed.autoGain) : true,
+          providerPreference: parsed.providerPreference || 'auto'
+        };
+      }
+    } catch (err) {}
+    return {
+      sampleRate: 44100,
+      autoGain: true,
+      providerPreference: 'auto'
+    };
+  });
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const {
     isRecording,
@@ -31,15 +61,35 @@ export const AppLayout: React.FC = () => {
     resumeRecording,
     stopRecording,
     visualizerData
-  } = useAudioRecorder();
+  } = useAudioRecorder({
+    sampleRate: settings.sampleRate,
+    autoGain: settings.autoGain
+  });
 
-  const [activeLesson, setActiveLesson] = useState<Recording | null>(null);
-  const [lang, setLang] = useState('en-US');
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
 
   // Auto poll status updates
   const isProcessingAny = recordings.some(r => r.processing);
+
+  useEffect(() => {
+    if (!activeLesson) return;
+
+    const updatedLesson = recordings.find(rec => rec.id === activeLesson.id);
+    if (!updatedLesson) {
+      setActiveLesson(null);
+      return;
+    }
+
+    // Chỉ cập nhật activeLesson khi thực sự có thay đổi về nội dung bóc chữ hoặc trạng thái
+    const hasChanged =
+      updatedLesson.processing !== activeLesson.processing ||
+      updatedLesson.transcript !== activeLesson.transcript ||
+      updatedLesson.words?.length !== activeLesson.words?.length ||
+      JSON.stringify(updatedLesson.aiScore) !== JSON.stringify(activeLesson.aiScore);
+
+    if (hasChanged) {
+      setActiveLesson(updatedLesson);
+    }
+  }, [recordings, activeLesson]);
 
   // Keyboard accessibility shortcuts
   useEffect(() => {
@@ -148,6 +198,7 @@ export const AppLayout: React.FC = () => {
               isPaused={isPaused}
               elapsedTime={elapsedTime}
               visualizerData={visualizerData}
+              lang={lang}
               onStartRecording={handleStartRecording}
               onPauseRecording={pauseRecording}
               onResumeRecording={resumeRecording}
@@ -167,6 +218,9 @@ export const AppLayout: React.FC = () => {
             onDelete={deleteRecording}
             onToggleFavorite={toggleFavorite}
             activeLessonId={activeLesson?.id}
+            importYouTube={importYouTube}
+            importFile={importFile}
+            lang={lang}
           />
         </div>
       </div>
@@ -178,6 +232,8 @@ export const AppLayout: React.FC = () => {
       <SettingsDialog
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+        value={settings}
+        onSave={setSettings}
       />
     </div>
   );

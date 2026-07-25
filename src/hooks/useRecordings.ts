@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Recording, AIScore } from '../types';
+import { Recording } from '../types';
 
 export interface UseRecordingsReturn {
   recordings: Recording[];
@@ -10,6 +10,8 @@ export interface UseRecordingsReturn {
   deleteRecording: (id: string) => Promise<void>;
   reTranscribe: (id: string, lang: string) => Promise<void>;
   toggleFavorite: (id: string) => void;
+  importYouTube: (url: string, mode: 'audio' | 'video', lang?: string) => Promise<Recording>;
+  importFile: (mediaFile: File, subtitleFile?: File, lang?: string) => Promise<Recording>;
 }
 
 export function useRecordings(): UseRecordingsReturn {
@@ -30,23 +32,11 @@ export function useRecordings(): UseRecordingsReturn {
       if (data.success) {
         // Trộn thêm trạng thái favorite từ localStorage
         const favorites = JSON.parse(localStorage.getItem('voicecraft_favorites') || '[]');
-        const updatedRecordings = (data.recordings || []).map((rec: Recording) => {
-          // Tạo giả lập điểm AI ngẫu nhiên/tương đối cho các bản ghi cũ
-          // Trong ứng dụng SaaS thực tế, điểm này được sinh ra từ AI Engine.
-          const fakeAIScore: AIScore = rec.aiScore || {
-            pronunciation: Math.floor(Math.random() * 25) + 70, // 70-95
-            fluency: Math.floor(Math.random() * 20) + 75,       // 75-95
-            speed: Math.floor(Math.random() * 50) + 120,        // 120-170 wpm
-            vocabulary: Math.floor(Math.random() * 20) + 70,    // 70-90
-            grammar: Math.floor(Math.random() * 20) + 75        // 75-95
-          };
-
-          return {
-            ...rec,
-            isFavorite: favorites.includes(rec.id),
-            aiScore: rec.processing ? undefined : fakeAIScore
-          };
-        });
+        const updatedRecordings = (data.recordings || []).map((rec: Recording) => ({
+          ...rec,
+          isFavorite: favorites.includes(rec.id),
+          aiScore: rec.processing ? undefined : rec.aiScore
+        }));
         setRecordings(updatedRecordings);
       } else {
         setError(data.error || 'Lỗi khi tải danh sách ghi âm');
@@ -74,17 +64,10 @@ export function useRecordings(): UseRecordingsReturn {
               // Cập nhật lại state
               const favorites = JSON.parse(localStorage.getItem('voicecraft_favorites') || '[]');
               setRecordings((data.recordings || []).map((rec: Recording) => {
-                const fakeAIScore: AIScore = rec.aiScore || {
-                  pronunciation: Math.floor(Math.random() * 25) + 70,
-                  fluency: Math.floor(Math.random() * 20) + 75,
-                  speed: Math.floor(Math.random() * 50) + 120,
-                  vocabulary: Math.floor(Math.random() * 20) + 70,
-                  grammar: Math.floor(Math.random() * 20) + 75
-                };
                 return {
                   ...rec,
                   isFavorite: favorites.includes(rec.id),
-                  aiScore: rec.processing ? undefined : fakeAIScore
+                  aiScore: rec.processing ? undefined : rec.aiScore
                 };
               }));
 
@@ -127,10 +110,21 @@ export function useRecordings(): UseRecordingsReturn {
       reader.onloadend = async () => {
         try {
           let whisperKey = '';
+          let openaiKey = '';
+          let geminiKey = '';
+          let geminiModel = 'gemini-2.0-flash';
+          let openaiModel = 'gpt-4o-mini';
+          let providerPreference = 'auto';
           try {
             const stored = localStorage.getItem('voicecraft_settings');
             if (stored) {
-              whisperKey = JSON.parse(stored).whisperKey || '';
+              const parsed = JSON.parse(stored);
+              whisperKey = parsed.whisperKey || parsed.openaiKey || '';
+              openaiKey = parsed.openaiKey || parsed.whisperKey || '';
+              geminiKey = parsed.geminiKey || '';
+              geminiModel = parsed.geminiModel || 'gemini-2.0-flash';
+              openaiModel = parsed.openaiModel || 'gpt-4o-mini';
+              providerPreference = parsed.providerPreference || 'auto';
             }
           } catch (e) {}
 
@@ -140,7 +134,12 @@ export function useRecordings(): UseRecordingsReturn {
             transcript,
             customName,
             language: lang,
-            whisperKey
+            whisperKey,
+            openaiKey,
+            geminiKey,
+            geminiModel,
+            openaiModel,
+            providerPreference
           };
 
           const response = await fetch('/api/save-recording', {
@@ -186,17 +185,28 @@ export function useRecordings(): UseRecordingsReturn {
   const reTranscribe = async (id: string, lang: string) => {
     try {
       let whisperKey = '';
+      let openaiKey = '';
+      let geminiKey = '';
+      let geminiModel = 'gemini-2.0-flash';
+      let openaiModel = 'gpt-4o-mini';
+      let providerPreference = 'auto';
       try {
         const stored = localStorage.getItem('voicecraft_settings');
         if (stored) {
-          whisperKey = JSON.parse(stored).whisperKey || '';
+          const parsed = JSON.parse(stored);
+          whisperKey = parsed.whisperKey || parsed.openaiKey || '';
+          openaiKey = parsed.openaiKey || parsed.whisperKey || '';
+          geminiKey = parsed.geminiKey || '';
+          geminiModel = parsed.geminiModel || 'gemini-2.0-flash';
+          openaiModel = parsed.openaiModel || 'gpt-4o-mini';
+          providerPreference = parsed.providerPreference || 'auto';
         }
       } catch (e) {}
 
       const response = await fetch(`/api/transcribe/${id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ language: lang, whisperKey })
+        body: JSON.stringify({ language: lang, whisperKey, openaiKey, geminiKey, geminiModel, openaiModel, providerPreference })
       });
       const data = await response.json();
 
@@ -229,6 +239,120 @@ export function useRecordings(): UseRecordingsReturn {
     }));
   };
 
+  // Import từ YouTube
+  const importYouTube = async (url: string, mode: 'audio' | 'video', lang?: string): Promise<Recording> => {
+    let whisperKey = '';
+    let openaiKey = '';
+    let geminiKey = '';
+    let geminiModel = 'gemini-2.0-flash';
+    let openaiModel = 'gpt-4o-mini';
+    let providerPreference = 'auto';
+    try {
+      const stored = localStorage.getItem('voicecraft_settings');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        whisperKey = parsed.whisperKey || parsed.openaiKey || '';
+        openaiKey = parsed.openaiKey || parsed.whisperKey || '';
+        geminiKey = parsed.geminiKey || '';
+        geminiModel = parsed.geminiModel || 'gemini-2.0-flash';
+        openaiModel = parsed.openaiModel || 'gpt-4o-mini';
+        providerPreference = parsed.providerPreference || 'auto';
+      }
+    } catch (e) {}
+
+    const payload = {
+      url,
+      mode,
+      language: lang || 'en',
+      whisperKey,
+      openaiKey,
+      geminiKey,
+      geminiModel,
+      openaiModel,
+      providerPreference
+    };
+
+    const response = await fetch('/api/import-youtube', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json();
+
+    if (data.success) {
+      await loadRecordings();
+      return data.recording;
+    } else {
+      throw new Error(data.error || 'Lỗi khi nhập bài học từ YouTube');
+    }
+  };
+
+  // Import từ tệp âm thanh/video cục bộ
+  const importFile = async (mediaFile: File, subtitleFile?: File, lang?: string): Promise<Recording> => {
+    const mediaBase64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (e) => reject(e);
+      reader.readAsDataURL(mediaFile);
+    });
+
+    let subtitleText = '';
+    if (subtitleFile) {
+      subtitleText = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (e) => reject(e);
+        reader.readAsText(subtitleFile);
+      });
+    }
+
+    let whisperKey = '';
+    let openaiKey = '';
+    let geminiKey = '';
+    let geminiModel = 'gemini-2.0-flash';
+    let openaiModel = 'gpt-4o-mini';
+    let providerPreference = 'auto';
+    try {
+      const stored = localStorage.getItem('voicecraft_settings');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        whisperKey = parsed.whisperKey || parsed.openaiKey || '';
+        openaiKey = parsed.openaiKey || parsed.whisperKey || '';
+        geminiKey = parsed.geminiKey || '';
+        geminiModel = parsed.geminiModel || 'gemini-2.0-flash';
+        openaiModel = parsed.openaiModel || 'gpt-4o-mini';
+        providerPreference = parsed.providerPreference || 'auto';
+      }
+    } catch (e) {}
+
+    const payload = {
+      mediaBase64,
+      mediaName: mediaFile.name,
+      subtitleText,
+      language: lang || 'en-US',
+      whisperKey,
+      openaiKey,
+      geminiKey,
+      geminiModel,
+      openaiModel,
+      providerPreference
+    };
+
+    const response = await fetch('/api/import-file', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json();
+
+    if (data.success) {
+      await loadRecordings();
+      return data.recording;
+    } else {
+      throw new Error(data.error || 'Lỗi khi nhập tệp cục bộ');
+    }
+  };
+
   return {
     recordings,
     isLoading,
@@ -237,6 +361,8 @@ export function useRecordings(): UseRecordingsReturn {
     saveRecording,
     deleteRecording,
     reTranscribe,
-    toggleFavorite
+    toggleFavorite,
+    importYouTube,
+    importFile
   };
 }

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, SlidersHorizontal, BookOpen, Star, RefreshCw } from 'lucide-react';
+import { Search, SlidersHorizontal, BookOpen, Star, RefreshCw, Link2, Upload } from 'lucide-react';
 import { LessonCard } from './LessonCard';
 import { Recording } from '../../types';
 import { useDialog } from '../../context/DialogContext';
@@ -12,6 +12,9 @@ interface LibrarySidebarProps {
   onDelete: (id: string) => Promise<void>;
   onToggleFavorite: (id: string) => void;
   activeLessonId?: string;
+  importYouTube: (url: string, mode: 'audio' | 'video', lang?: string) => Promise<Recording>;
+  importFile: (mediaFile: File, subtitleFile?: File, lang?: string) => Promise<Recording>;
+  lang?: string;
 }
 
 export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
@@ -20,9 +23,12 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
   onOpenLesson,
   onDelete,
   onToggleFavorite,
-  activeLessonId
+  activeLessonId,
+  importYouTube,
+  importFile,
+  lang
 }) => {
-  const { alert: showAlert, confirm: showConfirm } = useDialog();
+  const { alert: showAlert, confirm: showConfirm, prompt: showPrompt } = useDialog();
   const [search, setSearch] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'favorites'>('all');
   const [sortBy, setSortBy] = useState<'newest' | 'score'>('newest');
@@ -80,6 +86,97 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
     }
   };
 
+  const handleYouTubeImportClick = async () => {
+    const url = await showPrompt({
+      title: 'Nhập từ YouTube',
+      message: 'Nhập đường dẫn video YouTube hoặc YouTube Shorts:',
+      placeholder: 'https://www.youtube.com/watch?v=...'
+    });
+
+    if (url === null) return;
+
+    if (!url.trim()) {
+      showAlert({
+        title: 'Lỗi link YouTube',
+        message: 'Vui lòng nhập đường dẫn URL hợp lệ.',
+        type: 'error'
+      });
+      return;
+    }
+
+    const hasVideo = await showConfirm({
+      title: 'Tải Video hay Chỉ Audio?',
+      message: 'Bạn muốn tải cả Video (xem hình ảnh trong workspace) hay chỉ tải Audio (nhẹ hơn)?',
+      confirmLabel: 'Tải cả Video',
+      cancelLabel: 'Chỉ Audio'
+    });
+
+    const mode = hasVideo ? 'video' : 'audio';
+
+    try {
+      await importYouTube(url.trim(), mode, lang);
+      showAlert({
+        title: 'Bắt đầu import',
+        message: 'Đang tải media và phụ đề từ YouTube dưới nền. Trạng thái sẽ cập nhật tự động trong danh sách thư viện.',
+        type: 'success'
+      });
+    } catch (err: any) {
+      showAlert({
+        title: 'Lỗi import YouTube',
+        message: err.message || String(err),
+        type: 'error'
+      });
+    }
+  };
+
+  const handleFileImportClick = () => {
+    const mediaInput = document.createElement('input');
+    mediaInput.type = 'file';
+    mediaInput.accept = 'audio/*,video/*';
+    mediaInput.onchange = async () => {
+      const mediaFile = mediaInput.files?.[0];
+      if (!mediaFile) return;
+
+      const hasSubtitle = await showConfirm({
+        title: 'Đính kèm phụ đề?',
+        message: 'Bạn có tệp phụ đề (.srt hoặc .vtt) để hát karaoke cho tệp này không?',
+        confirmLabel: 'Có phụ đề',
+        cancelLabel: 'Không (AI tự động bóc)'
+      });
+
+      if (hasSubtitle) {
+        const subInput = document.createElement('input');
+        subInput.type = 'file';
+        subInput.accept = '.srt,.vtt';
+        subInput.onchange = async () => {
+          const subtitleFile = subInput.files?.[0];
+          await proceedWithFileImport(mediaFile, subtitleFile);
+        };
+        subInput.click();
+      } else {
+        await proceedWithFileImport(mediaFile);
+      }
+    };
+    mediaInput.click();
+  };
+
+  const proceedWithFileImport = async (mediaFile: File, subtitleFile?: File) => {
+    try {
+      await importFile(mediaFile, subtitleFile, lang);
+      showAlert({
+        title: 'Bắt đầu import file',
+        message: 'Đang xử lý tệp media và nạp phụ đề dưới nền. Trạng thái sẽ cập nhật tự động.',
+        type: 'success'
+      });
+    } catch (err: any) {
+      showAlert({
+        title: 'Lỗi import file',
+        message: err.message || String(err),
+        type: 'error'
+      });
+    }
+  };
+
   return (
     <div className="flex flex-col gap-4 p-5 rounded-2xl bg-card border border-borderCustom max-h-[640px]">
       {/* Header Library */}
@@ -91,6 +188,24 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
         <span className="text-xs text-textMuted bg-cardSecondary border border-borderCustom px-2 py-0.5 rounded font-mono font-bold">
           {recordings.length} Lessons
         </span>
+      </div>
+
+      {/* Import actions */}
+      <div className="flex gap-2">
+        <button
+          onClick={handleYouTubeImportClick}
+          className="flex-1 py-2 px-3 rounded-xl bg-cardSecondary hover:bg-cardSecondary/80 border border-borderCustom text-[11px] font-bold text-textSecondary hover:text-white flex items-center justify-center gap-1.5 transition-colors"
+        >
+          <Link2 className="w-3.5 h-3.5 text-red-500" />
+          YouTube Link
+        </button>
+        <button
+          onClick={handleFileImportClick}
+          className="flex-1 py-2 px-3 rounded-xl bg-cardSecondary hover:bg-cardSecondary/80 border border-borderCustom text-[11px] font-bold text-textSecondary hover:text-white flex items-center justify-center gap-1.5 transition-colors"
+        >
+          <Upload className="w-3.5 h-3.5 text-accent" />
+          Import File
+        </button>
       </div>
 
       {/* Filter and Search controls */}

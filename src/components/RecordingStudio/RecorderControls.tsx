@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Play, Pause, Square, Radio, HelpCircle } from 'lucide-react';
+import { useDialog } from '../../context/DialogContext';
 
 interface RecorderControlsProps {
   isRecording: boolean;
@@ -23,11 +24,21 @@ export const RecorderControls: React.FC<RecorderControlsProps> = ({
   onStopRecording,
   isSaving
 }) => {
+  const { alert: showAlert } = useDialog();
   const isSystemAudioSupported = typeof navigator.mediaDevices?.getDisplayMedia === 'function';
   const [sourceMode, setSourceMode] = useState<'mic' | 'system' | 'both' | 'screen'>(
     isSystemAudioSupported ? 'system' : 'mic'
   );
   const showSupportWarning = (sourceMode === 'system' || sourceMode === 'both' || sourceMode === 'screen') && !isSystemAudioSupported;
+
+  const handleHelp = () => {
+    showAlert({
+      title: 'Recorder Shortcuts',
+      message: 'Space: Pause/Resume\nCtrl+R: Start recording\nCtrl+S: Stop & save\n\nSource modes:\n- Microphone Only\n- System Audio Only\n- Mixed Mic & System\n- HD Screen & Audio',
+      type: 'info'
+    });
+  };
+
 
   // Format time sang 00:00:00
   const formatTime = (ms: number) => {
@@ -121,13 +132,14 @@ export const RecorderControls: React.FC<RecorderControlsProps> = ({
           </motion.button>
         )}
 
-        {/* Help Placeholder Button */}
+        {/* Help Button */}
         {isRecording && (
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            className="flex items-center justify-center p-3 rounded-full bg-cardSecondary border border-borderCustom text-textMuted cursor-help"
-            title="Shortcuts: Space to Pause, Ctrl+S to Stop"
+            onClick={handleHelp}
+            className="flex items-center justify-center p-3 rounded-full bg-cardSecondary border border-borderCustom text-textMuted hover:text-white transition-colors"
+            title="Show keyboard shortcuts"
           >
             <HelpCircle className="w-5 h-5" />
           </motion.button>

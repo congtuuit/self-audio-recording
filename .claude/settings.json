@@ -12,7 +12,13 @@
       "Skill(*)",
       "Python(*)",
       "Node(*)",
-      "Npm(*)"
+      "Npm(*)",
+      "PowerShell(Stop-Process -Id 19184 -Force)",
+      "PowerShell($env:PORT=3001; node server.js)",
+      "PowerShell(npx graphify hook-rebuild)",
+      "PowerShell(Invoke-RestMethod -Uri \"http://localhost:3001/api/import-youtube\" -Method Post -ContentType \"application/json\" -Body '{\"url\":\"https://www.youtube.com/watch?v=n3kNlFMXslo\",\"mode\":\"video\",\"language\":\"en-US\",\"whisperKey\":\"\",\"openaiKey\":\"\",\"geminiKey\":\"\",\"geminiModel\":\"gemini-2.0-flash\",\"openaiModel\":\"gpt-4o-mini\",\"providerPreference\":\"auto\"}')",
+      "PowerShell($env:PORT=3001; python test_full_flow.py)",
+      "PowerShell(git add -A)"
     ],
     "defaultMode": "bypassPermissions",
     "additionalDirectories": [
@@ -20,18 +26,6 @@
       "d:\\git\\self-audio-recording\\.claude",
       "C:\\Users\\tu.vancong\\.claude\\plans"
     ]
-  },
-  "skipDangerousModePermissionPrompt": true,
-  "commands": {
-    "npm start": {
-      "approved": true
-    },
-    "node server.js": {
-      "approved": true
-    },
-    "python test_full_flow.py": {
-      "approved": true
-    }
   },
   "hooks": {
     "PreToolUse": [
@@ -54,5 +48,17 @@
         ]
       }
     ]
+  },
+  "skipDangerousModePermissionPrompt": true,
+  "commands": {
+    "npm start": {
+      "approved": true
+    },
+    "node server.js": {
+      "approved": true
+    },
+    "python test_full_flow.py": {
+      "approved": true
+    }
   }
 }

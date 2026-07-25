@@ -8,7 +8,8 @@ import sys
 # Ensure UTF-8 stdout
 sys.stdout.reconfigure(encoding='utf-8')
 
-SERVER_URL = "http://localhost:3000"
+SERVER_PORT = os.environ.get("PORT", "3000")
+SERVER_URL = f"http://localhost:{SERVER_PORT}"
 TEST_AUDIO_SRC = "recordings/REC_DEBUG_AUDIO_20260724143036/audio.wav"
 
 def test_full_system_audio_flow():

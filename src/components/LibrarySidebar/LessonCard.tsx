@@ -58,9 +58,19 @@ export const LessonCard: React.FC<LessonCardProps> = ({
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-            <span className="text-sm font-semibold tracking-tight text-white truncate block max-w-[170px]" title={recording.filename}>
-              {recording.id}
+            <span className="text-sm font-semibold tracking-tight text-white truncate block max-w-[170px]" title={recording.videoTitle || recording.id}>
+              {recording.videoTitle || recording.id}
             </span>
+            {recording.source === 'youtube' && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-500 font-bold uppercase tracking-wider">
+                YT
+              </span>
+            )}
+            {recording.source === 'file_import' && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-accent/20 text-accent font-bold uppercase tracking-wider">
+                File
+              </span>
+            )}
             {isRecent && (
               <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-accent/20 text-accent font-bold uppercase tracking-wider">
                 New

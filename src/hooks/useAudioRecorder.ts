@@ -12,7 +12,13 @@ export interface UseAudioRecorderReturn {
   videoStream: MediaStream | null;
 }
 
-export function useAudioRecorder(): UseAudioRecorderReturn {
+export interface UseAudioRecorderOptions {
+  sampleRate?: number;
+  autoGain?: boolean;
+}
+
+export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudioRecorderReturn {
+  const { sampleRate = 44100, autoGain = true } = options;
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -65,15 +71,27 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
     setElapsedTime(0);
 
     const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    const audioCtx = new AudioContextClass();
+    const audioCtx = (() => {
+      try {
+        return new AudioContextClass({ sampleRate } as AudioContextOptions);
+      } catch {
+        return new AudioContextClass();
+      }
+    })();
     audioContextRef.current = audioCtx;
     sampleRateRef.current = audioCtx.sampleRate;
+
+    const micAudioConstraints: MediaTrackConstraints = {
+      autoGainControl: autoGain,
+      noiseSuppression: true,
+      echoCancellation: true
+    };
 
     let finalAudioStream: MediaStream | null = null;
 
     try {
       if (sourceMode === 'mic') {
-        const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const micStream = await navigator.mediaDevices.getUserMedia({ audio: micAudioConstraints });
         activeStreamsRef.current.push(micStream);
         finalAudioStream = micStream;
       } else if (sourceMode === 'system') {
@@ -84,7 +102,7 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
         displayStream.getVideoTracks().forEach(t => t.stop());
         finalAudioStream = new MediaStream([systemAudioTrack]);
       } else if (sourceMode === 'both') {
-        const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const micStream = await navigator.mediaDevices.getUserMedia({ audio: micAudioConstraints });
         activeStreamsRef.current.push(micStream);
         const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
         activeStreamsRef.current.push(displayStream);
@@ -111,7 +129,7 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
         if (systemAudioTrack) {
           finalAudioStream = new MediaStream([systemAudioTrack]);
         } else {
-          const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const micStream = await navigator.mediaDevices.getUserMedia({ audio: micAudioConstraints });
           activeStreamsRef.current.push(micStream);
           finalAudioStream = micStream;
         }

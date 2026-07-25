@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RotateCcw, Volume2, Mic, X, BookOpen } from 'lucide-react';
+import { RotateCcw, Volume2, Mic, X, BookOpen, Loader2 } from 'lucide-react';
 import { FeedbackPanel } from './FeedbackPanel';
 import { WaveformComparison } from './WaveformComparison';
 import { Recording } from '../../types';
@@ -17,41 +17,41 @@ interface ShadowingWorkspaceProps {
 const evaluatePronunciation = (originalWords: any[], spokenText: string) => {
   const cleanSpoken = spokenText.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(Boolean);
 
-  if (cleanSpoken.length === 0) {
-    return originalWords.map(w => ({
-      ...w,
-      score: Math.floor(Math.random() * 25) + 35 // Điểm thấp do không phát hiện giọng nói
-    }));
-  }
+  const scoreWord = (origWord: string, idx: number) => {
+    const cleanOrig = origWord.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!cleanOrig) return 95;
 
-  return originalWords.map((origW, idx) => {
-    const cleanOrig = origW.word.toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (!cleanOrig) return { ...origW, score: 95 }; // Bỏ qua ký tự đặc biệt
+    if (cleanSpoken.length === 0) {
+      return 35;
+    }
 
-    // Tìm kiếm trong một phạm vi cửa sổ xung quanh chỉ mục hiện tại
     const windowSize = 5;
     const startSearch = Math.max(0, idx - windowSize);
     const endSearch = Math.min(cleanSpoken.length, idx + windowSize + 1);
     const searchArea = cleanSpoken.slice(startSearch, endSearch);
 
-    let score = 40;
-
     if (searchArea.includes(cleanOrig)) {
-      score = Math.floor(Math.random() * 8) + 92; // 92-100 (xuất sắc)
-    } else {
-      const partialMatch = searchArea.some(spk => spk.includes(cleanOrig) || cleanOrig.includes(spk));
-      if (partialMatch) {
-        score = Math.floor(Math.random() * 12) + 72; // 72-84 (tương đối)
-      } else {
-        score = Math.floor(Math.random() * 10) + 40; // 40-50 (chưa đúng)
-      }
+      return 95;
     }
 
-    return {
-      ...origW,
-      score
-    };
-  });
+    const partialMatch = searchArea.some(spk => spk.includes(cleanOrig) || cleanOrig.includes(spk));
+    if (partialMatch) {
+      const lengthDelta = Math.abs(cleanOrig.length - (searchArea.find(spk => spk.includes(cleanOrig) || cleanOrig.includes(spk))?.length || cleanOrig.length));
+      return lengthDelta <= 2 ? 78 : 70;
+    }
+
+    const firstLetterMatch = searchArea.some(spk => spk[0] === cleanOrig[0]);
+    if (firstLetterMatch) {
+      return 55;
+    }
+
+    return 42;
+  };
+
+  return originalWords.map((origW, idx) => ({
+    ...origW,
+    score: scoreWord(origW.word, idx)
+  }));
 };
 
 export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
@@ -63,7 +63,10 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
   const [currentTime, setCurrentTime] = useState(0);
   const [speed, setSpeed] = useState(1.0);
   const [isLoopActive, setIsLoopActive] = useState(false);
+  const [isTranscribingLesson, setIsTranscribingLesson] = useState(false);
+  const [transcribeFinishedFlash, setTranscribeFinishedFlash] = useState(false);
   const [isUserHovering, setIsUserHovering] = useState(false);
+  const speedRef = useRef(speed);
 
   // User Shadowing State
   const [isUserRecording, setIsUserRecording] = useState(false);
@@ -93,6 +96,10 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    speedRef.current = speed;
+  }, [speed]);
 
   // Hàm trích xuất biên độ thực tế của file âm thanh (để vẽ waveform)
   const decodeAudioAndGetPeaks = async (audioUrlOrBlob: string | Blob, isOriginal: boolean) => {
@@ -153,7 +160,9 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
     const audio = audioRef.current;
     if (!audio) return;
 
-    audio.src = `/recordings/${lesson.filename}`;
+    audio.src = lesson.hasVideo
+      ? `/recordings/${lesson.id}/video.mp4`
+      : `/recordings/${lesson.filename}`;
     audio.load();
     setCurrentTime(0);
     setUserAttempted(false);
@@ -164,11 +173,12 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
     setOriginalDuration(0);
     setUserDuration(0);
     setEvaluatedWords([]);
+    setIsTranscribingLesson(false);
+    setTranscribeFinishedFlash(false);
+    audio.playbackRate = speedRef.current;
 
     // Tải thông tin biên độ sóng âm gốc
     decodeAudioAndGetPeaks(`/recordings/${lesson.filename}`, true);
-
-    audio.playbackRate = speed;
 
     const handleTimeUpdate = () => {
       setCurrentTime(audio.currentTime);
@@ -180,7 +190,13 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
     return () => {
       audio.removeEventListener('timeupdate', handleTimeUpdate);
     };
-  }, [lesson, speed]);
+  }, [lesson.id]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.playbackRate = speed;
+  }, [speed]);
 
   // Sắp xếp các từ theo mốc thời gian tăng dần
   const sortedWords = React.useMemo(() => {
@@ -218,6 +234,24 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
     });
 
     if (!dictCache[cleanWord]) {
+      // Ưu tiên đọc từ điển Anh - Việt được AI tiền xử lý theo bài học
+      if (lesson.dictionary && lesson.dictionary[cleanWord]) {
+        const aiItem = lesson.dictionary[cleanWord];
+        const meaningText = aiItem.viMeaning
+          ? `🇻🇳 ${aiItem.viMeaning}${aiItem.explanation ? ` — ${aiItem.explanation}` : ''}`
+          : (aiItem.explanation || 'Từ vựng thuộc bài học.');
+
+        setDictCache(prev => ({
+          ...prev,
+          [cleanWord]: {
+            phonetic: aiItem.phonetic || '',
+            meaning: meaningText,
+            loading: false
+          }
+        }));
+        return;
+      }
+
       setDictCache(prev => ({ ...prev, [cleanWord]: { phonetic: '', meaning: '', loading: true } }));
       try {
         const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${cleanWord}`);
@@ -318,6 +352,9 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
         const scores = evaluated.map(w => w.score || 0);
         const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
 
+        // Ước tính thời lượng từ âm thanh người dùng
+        setUserDuration(Number((blob.size / (44100 * 2)).toFixed(2)));
+
         // Lưu thông tin thực hành vào localStorage
         try {
           const attempt = {
@@ -351,7 +388,7 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
         const recognition = new SpeechRecognitionAPI();
         recognition.continuous = true;
         recognition.interimResults = false;
-        recognition.lang = 'en-US';
+        recognition.lang = lesson.language || 'en-US';
 
         recognition.onresult = (event: any) => {
           let text = '';
@@ -385,6 +422,41 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
     }
   };
 
+  const handleTranscribeLesson = async () => {
+    if (isTranscribingLesson) return;
+
+    const hasConfirmed = await showConfirm({
+      title: 'Chạy lại AI bóc chữ',
+      message: 'Bạn có muốn chạy lại AI bóc chữ cho bài học này không?',
+      confirmLabel: 'Chạy lại',
+      cancelLabel: 'Hủy'
+    });
+
+    if (!hasConfirmed) return;
+
+    setIsTranscribingLesson(true);
+    setTranscribeFinishedFlash(false);
+
+    try {
+      await reTranscribe(lesson.id, lesson.language || 'en-US');
+      setTranscribeFinishedFlash(true);
+      showAlert({
+        title: 'AI transcript hoàn tất',
+        message: 'Transcript bài học đã được cập nhật xong.',
+        type: 'success'
+      });
+      window.setTimeout(() => setTranscribeFinishedFlash(false), 1800);
+    } catch (err) {
+      showAlert({
+        title: 'AI transcript thất bại',
+        message: err instanceof Error ? err.message : String(err),
+        type: 'error'
+      });
+    } finally {
+      setIsTranscribingLesson(false);
+    }
+  };
+
   const handleCopyText = () => {
     const fullText = sortedWords.map(w => w.word).join(' ');
     navigator.clipboard.writeText(fullText);
@@ -415,11 +487,28 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
         </button>
       </div>
 
+      {/* Video Container (Optional when lesson has video) */}
+      {lesson.hasVideo && (
+        <div className="flex justify-center p-3 rounded-2xl bg-card border border-borderCustom overflow-hidden">
+          <video
+            ref={audioRef as any}
+            controls
+            className="w-full max-w-2xl rounded-xl shadow-2xl bg-black aspect-video max-h-[360px]"
+          />
+        </div>
+      )}
+
       {/* Global Learning Player Section */}
       <div className="p-5 rounded-2xl bg-card border border-borderCustom flex flex-col md:flex-row md:items-center justify-between gap-4">
-        {/* HTML5 Audio Player */}
+        {/* HTML5 Audio/Video Player */}
         <div className="flex-1 max-w-lg">
-          <audio ref={audioRef} controls className="w-full h-10 select-none"></audio>
+          {!lesson.hasVideo ? (
+            <audio ref={audioRef} controls className="w-full h-10 select-none"></audio>
+          ) : (
+            <div className="text-xs text-textMuted italic flex items-center gap-1.5 py-2">
+              🎥 Đang chạy ở chế độ Video (điều khiển phát phía trên)
+            </div>
+          )}
         </div>
 
         {/* Action Options controls */}
@@ -453,20 +542,25 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
 
           {/* AI Transcribe trigger */}
           <button
-            onClick={async () => {
-              const hasConfirmed = await showConfirm({
-                title: 'Chạy lại AI bóc chữ',
-                message: 'Bạn có muốn chạy lại AI bóc chữ cho bài học này không?',
-                confirmLabel: 'Chạy lại',
-                cancelLabel: 'Hủy'
-              });
-              if (hasConfirmed) {
-                reTranscribe(lesson.id, 'en-US');
-              }
-            }}
-            className="px-3 py-2 rounded-lg bg-cardSecondary hover:bg-cardSecondary/80 border border-borderCustom text-xs font-semibold text-textSecondary hover:text-white transition-colors"
+            onClick={handleTranscribeLesson}
+            disabled={isTranscribingLesson}
+            className={`px-3 py-2 rounded-lg border text-xs font-semibold transition-all flex items-center gap-1.5 ${
+              isTranscribingLesson
+                ? 'bg-cardSecondary/70 border-borderCustom text-textMuted cursor-wait'
+                : transcribeFinishedFlash
+                ? 'bg-success/10 border-success/30 text-success shadow-[0_0_0_1px_rgba(34,197,94,0.18)]'
+                : 'bg-cardSecondary hover:bg-cardSecondary/80 border-borderCustom text-textSecondary hover:text-white'
+            }`}
           >
-            🤖 AI Transcribe
+            {isTranscribingLesson ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" /> Đang xử lý...
+              </>
+            ) : transcribeFinishedFlash ? (
+              <>✅ AI Transcript Xong</>
+            ) : (
+              <>🤖 AI Transcribe</>
+            )}
           </button>
 
           {/* Copy button */}

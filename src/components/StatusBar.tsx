@@ -5,17 +5,11 @@ export const StatusBar: React.FC = () => {
   const [cpuUsage, setCpuUsage] = useState(2);
   const [ramUsage, setRamUsage] = useState(42);
 
-  // Giả lập CPU và RAM biến đổi nhẹ
+  // Hiển thị số liệu mô phỏng nhẹ nhưng ổn định
   useEffect(() => {
     const interval = setInterval(() => {
-      setCpuUsage(prev => {
-        const change = Math.floor(Math.random() * 3) - 1;
-        return Math.max(1, Math.min(8, prev + change));
-      });
-      setRamUsage(prev => {
-        const change = Math.floor(Math.random() * 3) - 1;
-        return Math.max(38, Math.min(50, prev + change));
-      });
+      setCpuUsage(prev => Math.max(1, Math.min(8, prev < 5 ? prev + 1 : prev - 1)));
+      setRamUsage(prev => Math.max(38, Math.min(50, prev < 45 ? prev + 1 : prev - 1)));
     }, 3000);
     return () => clearInterval(interval);
   }, []);
