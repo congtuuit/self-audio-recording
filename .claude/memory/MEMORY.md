@@ -1,0 +1,5 @@
+- [Folder-based Recordings](folder-based-recordings.md) — Cấu trúc lưu trữ bản ghi âm mới dưới dạng thư mục đóng gói (audio.wav + meta.json)
+- [Project Overview](project-overview.md) — Tổng quan kiến trúc, backend Node.js, Frontend Glassmorphism và các API endpoints
+- [Python Transcription Engine](python-transcription-engine.md) — Cách transcribe.py hoạt động, cơ chế bóc tách mốc thời gian từ tương đối
+- [Learning Features](learning-features.md) — Chi tiết về Karaoke Sync, Click-to-Seek, Shadowing Loop và Dictionary Lookup
+- [Custom Dialog Modal System](custom-dialog-modal-system.md) — Hệ thống hộp thoại Modal/Dialog tùy chỉnh dạng Glassmorphic

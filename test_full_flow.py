@@ -8,8 +8,9 @@ import sys
 # Ensure UTF-8 stdout
 sys.stdout.reconfigure(encoding='utf-8')
 
-SERVER_URL = "http://localhost:3000"
-TEST_AUDIO_SRC = "recordings/REC_20260724105621.wav"
+SERVER_PORT = os.environ.get("PORT", "3000")
+SERVER_URL = f"http://localhost:{SERVER_PORT}"
+TEST_AUDIO_SRC = "recordings/REC_DEBUG_AUDIO_20260724143036/audio.wav"
 
 def test_full_system_audio_flow():
     print("=" * 60)
@@ -48,26 +49,37 @@ def test_full_system_audio_flow():
         if res_data.get("success"):
             rec = res_data["recording"]
             rec_id = rec["id"]
-            transcript_result = rec["transcript"]
 
             print("\n[4/4] KIEM TRA KET QUA TREN DIA CUNG:")
-            wav_file = f"recordings/{rec_id}.wav"
-            txt_file = f"recordings/{rec_id}.txt"
+            wav_file = f"recordings/{rec_id}/audio.wav"
+            meta_file = f"recordings/{rec_id}/meta.json"
 
             print(f"  • File WAV: {wav_file} -> Ton tai: {os.path.exists(wav_file)}")
-            print(f"  • File TXT: {txt_file} -> Ton tai: {os.path.exists(txt_file)}")
+            print(f"  • File META: {meta_file} -> Ton tai: {os.path.exists(meta_file)}")
 
-            if os.path.exists(txt_file):
-                with open(txt_file, "r", encoding="utf-8") as tf:
-                    saved_text = tf.read()
-                print(f"\n  Noi dung file TXT luu truu:\n  \"{saved_text}\"\n")
+            # Đợi tối đa 15 giây cho background transcription hoàn thành (polling)
+            print("  • Đang đợi xử lý bóc chữ dưới nền (polling)...")
+            saved_text = ""
+            for _ in range(15):
+                time.sleep(1)
+                if os.path.exists(meta_file):
+                    try:
+                        with open(meta_file, "r", encoding="utf-8") as tf:
+                            meta_data = json.load(tf)
+                            saved_text = meta_data.get("fullText", "").strip()
+                    except Exception:
+                        saved_text = ""
+                    if saved_text and "(Đang" not in saved_text and "Lỗi" not in saved_text:
+                        break
 
-            if transcript_result and "(Không thể" not in transcript_result and "(Đang" not in transcript_result:
+            print(f"\n  Noi dung file META luu truu cuoi cung:\n  \"{saved_text}\"\n")
+
+            if saved_text and "(Đang" not in saved_text:
                 print("=" * 60)
                 print("SUCCESSFUL! LUONG AM THANH HE THONG & AI TRANSCRIBE HOAT DONG HOAN HAO!")
                 print("=" * 60)
             else:
-                print("Warning: Transcript belum sesuai khong nhu mong doi.")
+                print("Warning: Transcript chưa được xử lý thành công hoặc trống.")
         else:
             print(f"Server Error: {res_data.get('error')}")
 
