@@ -11,8 +11,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Preview production build: `npm run preview`
 
 ### Testing & Python Tools
-- Install Python speech dependencies: `pip install SpeechRecognition soundfile`
-- Run E2E integration flow test: `python test_full_flow.py`
+- Install Python speech & import dependencies: `pip install SpeechRecognition soundfile yt-dlp youtube-transcript-api`
+- Run standard integration flow test: `python test_full_flow.py`
+- Run comprehensive QC automated test suite: `python test_automation_suite.py` (or `$env:PORT=3001; python test_automation_suite.py` on Windows if port 3000 is occupied)
 - Run speech-to-text transcription manually: `python transcribe.py recordings/FILENAME.wav <language_code>`
   - Supported language codes: `en-US` (English, default), `vi-VN` (Vietnamese)
 
@@ -22,18 +23,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Frontend (Vite + React + TS + TailwindCSS)**:
   - Entry point is compiled from `src/`. Static production assets are outputted to `dist/`.
   - `src/hooks/useAudioRecorder.ts`: Captures microphone/system audio using Web Audio API and encodes it directly in the browser to 16-bit 44.1kHz Mono WAV PCM.
-  - `src/hooks/useRecordings.ts`: Coordinates API calls (`/api/recordings`, `/api/save-recording`, `/api/transcribe`) and polls backend for ongoing background transcription status.
-  - `src/components/ShadowingWorkspace/`: Interactive shadowing workstation featuring word-by-word karaoke synchronization, word loop (shadowing A-B), IPA dictionary lookups, waveform comparison charts, and speech assessment feedback.
+  - `src/hooks/useRecordings.ts`: Coordinates local recording saving, background polling, and triggering YouTube or local file import operations.
+  - `src/components/ShadowingWorkspace/`: Interactive shadowing workstation featuring word-by-word karaoke synchronization, word loop (shadowing A-B), optional video playback viewer, IPA dictionary lookups, waveform comparison charts, and speech assessment feedback.
 - **Backend (Node.js)**:
-  - `server.js`: Zero-dependency backend using native `http` module. Serves static production assets from `dist/` and audio streams from `recordings/`.
-  - Supports HTTP 206 Range Requests (`Accept-Ranges: bytes`) for audio seeking. Sends no-cache headers for range requests and calls `fileStream.destroy()` on connection close (`req.on('close')`) to prevent socket leaks.
-  - Supports OpenAI Whisper API transcription (obtaining word timestamps with `timestamp_granularities[]=word`) when `whisperKey` is provided, falling back automatically to `transcribe.py` (local Google API) on failure or when key is absent.
-- **Speech to Text (Python)**:
-  - `transcribe.py`: Executed as a non-blocking background child process by `server.js`.
-  - Splits audio into 6-second chunks for processing via Google Speech Recognition, outputting a raw text transcript (`.txt`) and a structured json metadata file (`.json`) containing word timestamps (`{ word, start, end }`).
+  - `server.js`: Zero-dependency backend using native `http` module. Serves static production assets from `dist/` and audio/video streams from `recordings/`.
+  - Supports HTTP 206 Range Requests (`Accept-Ranges: bytes`) for audio/video seeking. Sends no-cache headers for range requests and calls `fileStream.destroy()` on connection close (`req.on('close')`) to prevent socket leaks.
+  - Exposes endpoints `/api/recordings`, `/api/save-recording`, `/api/transcribe/:id`, `/api/import-youtube`, and `/api/import-file`.
+- **Import & Transcription Python Helpers**:
+  - `transcribe.py`: Splits audio into 6-second chunks for processing via Google Speech Recognition, outputting text transcripts and word-timestamp metadata.
+  - `youtube_import.py`: Parses YouTube URL, fetches video metadata and English captions (manual or auto-generated), downloads media, and generates standardized mono WAV audio and optional MP4 video files.
+  - `file_import.py`: Converts local media (MP3/WAV/MP4/WebM) to standardized WAV/MP4 files, and parses SRT/VTT subtitle files into word-level timestamps.
 
 ### Coding Guidelines
-- **Backend (Node.js)**: Maintain zero external dependencies. Do not import Express or other web frameworks. Clean up accompanying `.wav`, `.txt`, and `.json` files from `recordings/` when a recording is deleted.
+- **Backend (Node.js)**: Maintain zero external dependencies. Do not import Express or other web frameworks. Clean up accompanying `.wav`, `.mp4`, and `meta.json` files from `recordings/` when a lesson is deleted.
 - **Frontend**: Match existing layout variables and styling guidelines in `tailwind.config.js`. Avoid using external CSS transitions on word highlights that could cause karaoke sync layout shifts. Workspace settings (API Key, Sample Rate, Auto Gain) are saved in `localStorage` under `voicecraft_settings`.
 - **Plans & Memory**: Project plans are stored locally in [.claude/plans/](.claude/plans/) instead of global directories.
 - **Python**: Reconfigure standard output streams to use UTF-8 (`sys.stdout.reconfigure(encoding='utf-8')`) when handling Windows console interactions. Ensure output JSON structures match the existing schema so client-side karaoke playback works seamlessly.

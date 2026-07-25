@@ -19,7 +19,8 @@
       "PowerShell(Invoke-RestMethod -Uri \"http://localhost:3001/api/import-youtube\" -Method Post -ContentType \"application/json\" -Body '{\"url\":\"https://www.youtube.com/watch?v=n3kNlFMXslo\",\"mode\":\"video\",\"language\":\"en-US\",\"whisperKey\":\"\",\"openaiKey\":\"\",\"geminiKey\":\"\",\"geminiModel\":\"gemini-2.0-flash\",\"openaiModel\":\"gpt-4o-mini\",\"providerPreference\":\"auto\"}')",
       "PowerShell($env:PORT=3001; python test_full_flow.py)",
       "PowerShell(git add -A)",
-      "PowerShell(npm run build)"
+      "PowerShell(npm run build)",
+      "PowerShell(npx graphify hook-rebuild)"
     ],
     "defaultMode": "bypassPermissions",
     "additionalDirectories": [
