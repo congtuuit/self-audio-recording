@@ -542,7 +542,8 @@ const server = http.createServer((req, res) => {
               videoTitle: videoTitle,
               videoChannel: videoChannel,
               videoThumbnail: videoThumbnail,
-              hasVideo: hasVideo
+              hasVideo: hasVideo,
+              duration: duration
             });
           }
         }

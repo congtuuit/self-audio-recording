@@ -40,6 +40,7 @@ export interface Recording {
   videoChannel?: string;
   videoThumbnail?: string;
   hasVideo?: boolean;
+  duration?: number;
 }
 
 export interface VoicecraftSettings {

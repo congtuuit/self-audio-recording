@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion as motionFramer } from 'framer-motion';
-import { Play, Star, Trash2, Download, Award, Calendar, Layers } from 'lucide-react';
+import { Play, Star, Trash2, Download, Award, Calendar, Layers, Clock } from 'lucide-react';
 import { Recording } from '../../types';
 
 interface LessonCardProps {
@@ -26,6 +26,18 @@ export const LessonCard: React.FC<LessonCardProps> = ({
 
   // Quy đổi kích thước file
   const sizeKB = (recording.size / 1024).toFixed(1);
+
+  // Format duration sang mm:ss hoặc hh:mm:ss
+  const formatDuration = (sec: number) => {
+    if (!sec || isNaN(sec)) return '0:00';
+    const hrs = Math.floor(sec / 3600);
+    const mins = Math.floor((sec % 3600) / 60);
+    const secs = Math.floor(sec % 60);
+    if (hrs > 0) {
+      return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+    return `${mins}:${String(secs).padStart(2, '0')}`;
+  };
 
   // Kiểm tra xem bản ghi có mới tạo gần đây không (trong vòng 2 tiếng)
   const isRecent = Date.now() - new Date(recording.createdAt).getTime() < 2 * 3600 * 1000;
@@ -86,6 +98,12 @@ export const LessonCard: React.FC<LessonCardProps> = ({
             <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {dateStr}</span>
             <span>•</span>
             <span className="flex items-center gap-1"><Layers className="w-3 h-3" /> {sizeKB} KB</span>
+            {recording.duration ? (
+              <>
+                <span>•</span>
+                <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {formatDuration(recording.duration)}</span>
+              </>
+            ) : null}
           </div>
         </div>
 
