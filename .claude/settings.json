@@ -20,7 +20,12 @@
       "PowerShell($env:PORT=3001; python test_full_flow.py)",
       "PowerShell(git add -A)",
       "PowerShell(npm run build)",
-      "PowerShell(npx graphify hook-rebuild)"
+      "PowerShell(npx graphify hook-rebuild)",
+      "PowerShell(python test_full_flow.py)",
+      "PowerShell(npx tsc --noEmit)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue)",
+      "PowerShell(npm run dev)",
+      "PowerShell(Get-NetTCPConnection | Where-Object { $_.RemotePort -eq 20128 } -ErrorAction SilentlyContinue)"
     ],
     "defaultMode": "bypassPermissions",
     "additionalDirectories": [

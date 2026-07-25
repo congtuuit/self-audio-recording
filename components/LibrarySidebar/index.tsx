@@ -4,6 +4,7 @@ import { Search, SlidersHorizontal, BookOpen, Star, RefreshCw, Link2, Upload } f
 import { LessonCard } from './LessonCard';
 import { Recording } from '../../types';
 import { useDialog } from '../../context/DialogContext';
+import { useI18n } from '../../context/I18nContext';
 
 interface LibrarySidebarProps {
   recordings: Recording[];
@@ -29,6 +30,7 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
   lang
 }) => {
   const { alert: showAlert, confirm: showConfirm, prompt: showPrompt } = useDialog();
+  const { t } = useI18n();
   const [search, setSearch] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'favorites'>('all');
   const [sortBy, setSortBy] = useState<'newest' | 'score'>('newest');
@@ -67,10 +69,10 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
 
   const handleDelete = async (id: string) => {
     const hasConfirmed = await showConfirm({
-      title: 'Xóa bản ghi',
-      message: 'Bạn có chắc muốn xóa bản ghi này cùng toàn bộ thư mục và tệp cấu hình đi kèm không?',
-      confirmLabel: 'Xóa',
-      cancelLabel: 'Hủy'
+      title: t('dialog.deleteTitle'),
+      message: t('dialog.deleteMsg'),
+      confirmLabel: t('dialog.deleteConfirm'),
+      cancelLabel: t('dialog.cancel')
     });
 
     if (hasConfirmed) {
@@ -88,8 +90,8 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
 
   const handleYouTubeImportClick = async () => {
     const url = await showPrompt({
-      title: 'Nhập từ YouTube',
-      message: 'Nhập đường dẫn video YouTube hoặc YouTube Shorts:',
+      title: t('dialog.ytTitle'),
+      message: t('dialog.ytMsg'),
       placeholder: 'https://www.youtube.com/watch?v=...'
     });
 
@@ -105,10 +107,10 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
     }
 
     const hasVideo = await showConfirm({
-      title: 'Tải Video hay Chỉ Audio?',
-      message: 'Bạn muốn tải cả Video (xem hình ảnh trong workspace) hay chỉ tải Audio (nhẹ hơn)?',
-      confirmLabel: 'Tải cả Video',
-      cancelLabel: 'Chỉ Audio'
+      title: t('dialog.ytVideoTitle'),
+      message: t('dialog.ytVideoMsg'),
+      confirmLabel: t('dialog.ytVideoConfirm'),
+      cancelLabel: t('dialog.ytAudioConfirm')
     });
 
     const mode = hasVideo ? 'video' : 'audio';
@@ -116,8 +118,8 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
     try {
       await importYouTube(url.trim(), mode, lang);
       showAlert({
-        title: 'Bắt đầu import',
-        message: 'Đang tải media và phụ đề từ YouTube dưới nền. Trạng thái sẽ cập nhật tự động trong danh sách thư viện.',
+        title: t('dialog.importStart'),
+        message: t('dialog.importStartMsg'),
         type: 'success'
       });
     } catch (err: any) {
@@ -138,10 +140,10 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
       if (!mediaFile) return;
 
       const hasSubtitle = await showConfirm({
-        title: 'Đính kèm phụ đề?',
-        message: 'Bạn có tệp phụ đề (.srt hoặc .vtt) để hát karaoke cho tệp này không?',
-        confirmLabel: 'Có phụ đề',
-        cancelLabel: 'Không (AI tự động bóc)'
+        title: t('dialog.subTitle'),
+        message: t('dialog.subMsg'),
+        confirmLabel: t('dialog.subConfirm'),
+        cancelLabel: t('dialog.subCancel')
       });
 
       if (hasSubtitle) {
@@ -164,8 +166,8 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
     try {
       await importFile(mediaFile, subtitleFile, lang);
       showAlert({
-        title: 'Bắt đầu import file',
-        message: 'Đang xử lý tệp media và nạp phụ đề dưới nền. Trạng thái sẽ cập nhật tự động.',
+        title: t('dialog.importStart'),
+        message: t('dialog.importStartMsg'),
         type: 'success'
       });
     } catch (err: any) {
@@ -183,10 +185,10 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
       <div className="flex items-center justify-between pb-3 border-b border-borderCustom">
         <div className="flex items-center gap-2">
           <BookOpen className="w-4 h-4 text-accent" />
-          <h3 className="text-sm font-semibold text-textSecondary">Learning Library</h3>
+          <h3 className="text-sm font-semibold text-textSecondary">{t('library.title')}</h3>
         </div>
         <span className="text-xs text-textMuted bg-cardSecondary border border-borderCustom px-2 py-0.5 rounded font-mono font-bold">
-          {recordings.length} Lessons
+          {recordings.length} {t('library.lessons')}
         </span>
       </div>
 
@@ -197,14 +199,14 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
           className="flex-1 py-2 px-3 rounded-xl bg-cardSecondary hover:bg-cardSecondary/80 border border-borderCustom text-[11px] font-bold text-textSecondary hover:text-white flex items-center justify-center gap-1.5 transition-colors"
         >
           <Link2 className="w-3.5 h-3.5 text-red-500" />
-          YouTube Link
+          {t('library.importYoutube')}
         </button>
         <button
           onClick={handleFileImportClick}
           className="flex-1 py-2 px-3 rounded-xl bg-cardSecondary hover:bg-cardSecondary/80 border border-borderCustom text-[11px] font-bold text-textSecondary hover:text-white flex items-center justify-center gap-1.5 transition-colors"
         >
           <Upload className="w-3.5 h-3.5 text-accent" />
-          Import File
+          {t('library.importFile')}
         </button>
       </div>
 
@@ -217,7 +219,7 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Tìm kiếm bài học..."
+            placeholder={t('library.search')}
             className="w-full bg-cardSecondary border border-borderCustom rounded-xl pl-9 pr-4 py-2 text-xs focus:outline-none focus:border-accent text-white placeholder-textMuted"
           />
         </div>
@@ -231,7 +233,7 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
                 filterMode === 'all' ? 'bg-accent text-white shadow-glow' : 'text-textMuted hover:text-white'
               }`}
             >
-              All
+              {t('library.filterAll')}
             </button>
             <button
               onClick={() => setFilterMode('favorites')}
@@ -239,7 +241,7 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
                 filterMode === 'favorites' ? 'bg-accent text-white shadow-glow' : 'text-textMuted hover:text-white'
               }`}
             >
-              <Star className="w-3 h-3 fill-current" /> Favs
+              <Star className="w-3 h-3 fill-current" /> {t('library.filterFav')}
             </button>
           </div>
 
@@ -250,8 +252,8 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
               onChange={(e) => setSortBy(e.target.value as 'newest' | 'score')}
               className="bg-transparent border-none text-textSecondary focus:outline-none cursor-pointer"
             >
-              <option value="newest" className="bg-card text-white">Newest First</option>
-              <option value="score" className="bg-card text-white">Top Scored</option>
+              <option value="newest" className="bg-card text-white">{t('library.sortNewest')}</option>
+              <option value="score" className="bg-card text-white">{t('library.sortScore')}</option>
             </select>
           </div>
         </div>
@@ -262,7 +264,7 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
         {isLoading && recordings.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-10 gap-3 text-textMuted text-xs font-semibold">
             <RefreshCw className="w-5 h-5 animate-spin text-accent" />
-            <span>Loading recordings library...</span>
+            <span>{t('library.loading')}</span>
           </div>
         ) : processedRecordings.length > 0 ? (
           <motion.div layout className="space-y-3">
@@ -286,9 +288,9 @@ export const LibrarySidebar: React.FC<LibrarySidebarProps> = ({
               <Star className="w-6 h-6 text-textMuted" />
             </div>
             <div>
-              <h4 className="text-sm font-semibold text-textSecondary">No lessons found</h4>
+              <h4 className="text-sm font-semibold text-textSecondary">{t('library.empty')}</h4>
               <p className="text-xs text-textMuted max-w-[200px] mx-auto mt-1 leading-relaxed">
-                {search ? 'Không tìm thấy kết quả phù hợp với từ khóa.' : 'Hãy bắt đầu ghi âm để tạo bài học shadowing đầu tiên!'}
+                {search ? t('library.empty') : t('library.emptySub')}
               </p>
             </div>
           </div>

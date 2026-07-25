@@ -20,6 +20,13 @@ export interface DictionaryItem {
   example?: string;
 }
 
+export interface SentenceAnalysis {
+  translation: string;
+  grammar: string;
+  linkings: string[];
+  shadowing: string;
+}
+
 export interface Recording {
   id: string;
   filename: string;
@@ -41,17 +48,22 @@ export interface Recording {
   videoThumbnail?: string;
   hasVideo?: boolean;
   duration?: number;
+  sentenceAnalysis?: Record<string, SentenceAnalysis>;
 }
 
 export interface VoicecraftSettings {
+  uiLanguage?: 'vi' | 'en';
   whisperKey?: string;
   openaiKey?: string;
   geminiKey?: string;
   geminiModel?: string;
   openaiModel?: string;
+  customEndpointUrl?: string;
+  customEndpointKey?: string;
+  customEndpointModel?: string;
   sampleRate?: number;
   autoGain?: boolean;
-  providerPreference?: 'auto' | 'gemini' | 'openai' | 'local';
+  providerPreference?: 'auto' | 'gemini' | 'openai' | 'local' | 'custom';
 }
 
 export interface UserProgress {

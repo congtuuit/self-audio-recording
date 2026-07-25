@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import { exec } from 'child_process';
+import { logger } from './logger';
+import { readSettings } from './config';
 
 export const RECORDINGS_DIR = path.join(process.cwd(), 'recordings');
 
@@ -17,16 +19,16 @@ export function runPythonTranscribe(baseName: string, lang: string = 'vi-VN'): P
     const scriptPath = path.join(process.cwd(), 'transcribe.py');
     const cmd = `python "${scriptPath}" "${wavPath}" ${lang}`;
 
-    console.log(`[*] Running auto-transcribe: ${cmd}`);
+    logger.info(`[*] Running auto-transcribe: ${cmd}`);
     exec(cmd, { cwd: process.cwd() }, (error, stdout, stderr) => {
       if (error) {
-        console.error(`[-] Python execute error: ${error.message}`);
+        logger.error(`[-] Python execute error: ${error.message}`);
       }
       if (stderr) {
-        console.error(`[-] Python stderr: ${stderr}`);
+        logger.error(`[-] Python stderr: ${stderr}`);
       }
       if (stdout) {
-        console.log(`[*] Python stdout: ${stdout}`);
+        logger.info(`[*] Python stdout: ${stdout}`);
       }
 
       // Python sinh ra file audio.txt và audio.json
@@ -48,7 +50,7 @@ export function runPythonTranscribe(baseName: string, lang: string = 'vi-VN'): P
           words = pyJsonData.words || [];
           duration = pyJsonData.duration || 0;
         } catch (e) {
-          console.error('Lỗi khi đọc file JSON sinh từ python:', e);
+          logger.error('Lỗi khi đọc file JSON sinh từ python:', e);
         }
       }
 
@@ -66,13 +68,13 @@ export function runPythonTranscribe(baseName: string, lang: string = 'vi-VN'): P
           fileSize: stats.size
         };
         fs.writeFileSync(metaPath, JSON.stringify(metaOutput, null, 2), 'utf-8');
-        console.log(`[+] Đã tạo file meta.json cho ${baseName}`);
+        logger.info(`[+] Đã tạo file meta.json cho ${baseName}`);
 
         // Xóa tệp tạm
         if (fs.existsSync(pyTxtPath)) fs.unlinkSync(pyTxtPath);
         if (fs.existsSync(pyJsonPath)) fs.unlinkSync(pyJsonPath);
       } catch (metaErr) {
-        console.error('Lỗi tổng hợp meta.json sau khi chạy python:', metaErr);
+        logger.error('Lỗi tổng hợp meta.json sau khi chạy python:', metaErr);
       }
 
       resolve(text);
@@ -91,7 +93,7 @@ export async function transcribeWithGemini(baseName: string, lang: string = 'en-
   }
 
   const targetModel = modelName || 'gemini-2.0-flash';
-  console.log(`[*] Running Google Gemini (${targetModel}) Transcribe & Dictionary for ${baseName}...`);
+  logger.info(`[*] Running Google Gemini (${targetModel}) Transcribe & Dictionary for ${baseName}...`);
   const fileBuffer = fs.readFileSync(wavPath);
   const base64Audio = fileBuffer.toString('base64');
 
@@ -150,7 +152,7 @@ export async function transcribeWithGemini(baseName: string, lang: string = 'en-
     const cleanJson = textOutput.replace(/```json/g, '').replace(/```/g, '').trim();
     parsed = JSON.parse(cleanJson);
   } catch (parseErr) {
-    console.error('[-] Error parsing Gemini JSON response:', parseErr);
+    logger.error('[-] Error parsing Gemini JSON response:', parseErr);
     parsed = { fullText: textOutput, words: [], dictionary: {} };
   }
 
@@ -172,17 +174,20 @@ export async function transcribeWithGemini(baseName: string, lang: string = 'en-
   };
 
   fs.writeFileSync(metaPath, JSON.stringify(metaOutput, null, 2), 'utf-8');
-  console.log(`[+] Gemini 2.0 Flash finished successfully for ${baseName}`);
+  logger.info(`[+] Gemini 2.0 Flash finished successfully for ${baseName}`);
   return parsed.fullText;
 }
 
 // Hàm sinh từ điển Anh-Việt theo ngữ cảnh bằng ChatGPT (model tùy chọn)
-export async function generateDictionaryWithChatGPT(fullText: string, openaiKey: string, modelName: string = 'gpt-4o-mini'): Promise<any> {
-  if (!openaiKey || !fullText) return {};
+export async function generateDictionaryWithChatGPT(fullText: string, openaiKey: string, modelName: string = 'gpt-4o-mini', customUrl?: string): Promise<any> {
+  if (!fullText) return {};
   const targetModel = modelName || 'gpt-4o-mini';
+  const endpoint = customUrl ? `${customUrl.replace(/\/$/, '')}/chat/completions` : 'https://api.openai.com/v1/chat/completions';
+  const headers: any = { 'Content-Type': 'application/json' };
+  if (openaiKey) headers['Authorization'] = `Bearer ${openaiKey}`;
 
   try {
-    console.log(`[*] Generating EN-VI dictionary via OpenAI (${targetModel})...`);
+    logger.info(`[*] Generating EN-VI dictionary via OpenAI (${targetModel})...`);
     const prompt = `Bạn là trợ lý từ điển Anh - Việt. Dựa trên đoạn transcript sau: "${fullText}", hãy chọn lọc các từ vựng tiếng Anh quan trọng và xuất ra JSON duy nhất theo schema:
 {
   "từ_viết_thường": {
@@ -192,12 +197,9 @@ export async function generateDictionaryWithChatGPT(fullText: string, openaiKey:
   }
 }`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch(endpoint, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openaiKey}`,
-        'Content-Type': 'application/json'
-      },
+      headers,
       body: JSON.stringify({
         model: targetModel,
         messages: [
@@ -210,16 +212,164 @@ export async function generateDictionaryWithChatGPT(fullText: string, openaiKey:
 
     if (!response.ok) return {};
     const resData = await response.json();
-    const content = resData.choices?.[0]?.message?.content || '{}';
+    let content = resData.choices?.[0]?.message?.content || '{}';
+    
+    content = content.replace(/<think>[\s\S]*?<\/think>/gi, '');
+    content = content.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '');
+    content = content.replace(/^data:\s*/gm, '');
+    
+    const firstBrace = content.indexOf('{');
+    const lastBrace = content.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      content = content.substring(firstBrace, lastBrace + 1);
+    }
+    
+    content = content.trim();
+
     return JSON.parse(content);
   } catch (err: any) {
-    console.error('[-] Error generating EN-VI dictionary with ChatGPT:', err.message);
+    logger.error('[-] Error generating EN-VI dictionary with ChatGPT:', err.message);
+    return {};
+  }
+}
+
+export async function generateSentenceAnalysisWithAI(
+  textOrSentences: string | string[],
+  apiKey: string,
+  modelName: string = 'gpt-4o-mini',
+  customUrl?: string,
+  provider: string = 'auto'
+): Promise<any> {
+  if (!textOrSentences || (Array.isArray(textOrSentences) && textOrSentences.length === 0)) return {};
+  const targetModel = modelName || (provider === 'gemini' ? 'gemini-2.0-flash' : 'gpt-4o-mini');
+  const isGemini = provider === 'gemini';
+  
+  const endpoint = isGemini 
+    ? `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${apiKey}`
+    : (customUrl ? `${customUrl.replace(/\/$/, '')}/chat/completions` : 'https://api.openai.com/v1/chat/completions');
+  
+  const headers: any = { 'Content-Type': 'application/json' };
+  if (!isGemini && apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+  try {
+    logger.info(`[*] Generating sentence analysis via AI (${targetModel})...`);
+
+    let prompt = '';
+    if (Array.isArray(textOrSentences)) {
+      // Batch sentences prompt
+      prompt = `Bạn là một chuyên gia ngôn ngữ tiếng Anh. Hãy dịch nghĩa và phân tích các câu tiếng Anh sau đây sang tiếng Việt.
+
+Danh sách các câu cần dịch và phân tích:
+${textOrSentences.map((s, i) => `${i + 1}. "${s}"`).join('\n')}
+
+Yêu cầu:
+1. Phân tích từng câu trong danh sách và xuất ra JSON duy nhất theo schema sau.
+2. Trường "english" trong kết quả trả về phải giữ nguyên câu gốc từ danh sách (hoặc viết thường).
+LƯU Ý: Phải là định dạng JSON hợp lệ.
+Schema:
+{
+  "sentences": [
+    {
+      "english": "câu tiếng anh gốc",
+      "translation": "Bản dịch nghĩa tiếng Việt tự nhiên",
+      "grammar": "Phân tích cấu trúc ngữ pháp chính hoặc điểm đáng chú ý trong câu (1-2 câu)",
+      "linkings": ["Quy tắc nối âm 1 (vd: want you -> /wɑːn-tʃuː/)", "Quy tắc nối âm 2"],
+      "shadowing": "Mẹo nhấn nhá, ngắt nghỉ, lên xuống giọng cho câu này"
+    }
+  ]
+}`;
+    } else {
+      // Original full-text prompt
+      prompt = `Bạn là một chuyên gia ngôn ngữ tiếng Anh. Hãy phân tích từng câu trong đoạn transcript sau đây.
+Transcript: "${textOrSentences}"
+
+Yêu cầu:
+1. Tách đoạn văn thành các câu riêng biệt (dựa trên dấu chấm, dấu hỏi).
+2. Phân tích và xuất ra JSON duy nhất theo schema sau.
+LƯU Ý: Phải là định dạng JSON hợp lệ.
+Schema:
+{
+  "sentences": [
+    {
+      "english": "câu tiếng anh gốc (viết thường, giữ nguyên nguyên văn)",
+      "translation": "Bản dịch nghĩa tiếng Việt tự nhiên",
+      "grammar": "Phân tích cấu trúc ngữ pháp chính hoặc điểm đáng chú ý trong câu (1-2 câu)",
+      "linkings": ["Quy tắc nối âm 1 (vd: want you -> /wɑːn-tʃuː/)", "Quy tắc nối âm 2"],
+      "shadowing": "Mẹo nhấn nhá, ngắt nghỉ, lên xuống giọng cho câu này"
+    }
+  ]
+}`;
+    }
+
+    let reqBody;
+    if (isGemini) {
+      reqBody = {
+        contents: [
+          {
+            parts: [{ text: 'You return ONLY valid JSON matching the requested schema. Ensure the keys are the exact lowercase English sentences from the transcript.\n\n' + prompt }]
+          }
+        ],
+        generationConfig: {
+          responseMimeType: 'application/json'
+        }
+      };
+    } else {
+      reqBody = {
+        model: targetModel,
+        messages: [
+          { role: 'system', content: 'You return ONLY valid JSON matching the requested schema. Ensure the keys are the exact lowercase English sentences from the transcript.' },
+          { role: 'user', content: prompt }
+        ],
+        response_format: { type: 'json_object' },
+        stream: false
+      };
+    }
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(reqBody)
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      logger.error('[-] API Error:', errText);
+      return {};
+    }
+    const resData = await response.json();
+    let content = '{}';
+    
+    if (isGemini) {
+      content = resData.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    } else {
+      content = resData.choices?.[0]?.message?.content || '{}';
+    }
+    
+    // 1. Remove Chain-of-Thought tags like <think> or <thinking>
+    content = content.replace(/<think>[\s\S]*?<\/think>/gi, '');
+    content = content.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '');
+    
+    // 2. Remove SSE artifacts if any
+    content = content.replace(/^data:\s*/gm, '');
+    
+    // 3. Extract the JSON block between the first { and last }
+    const firstBrace = content.indexOf('{');
+    const lastBrace = content.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      content = content.substring(firstBrace, lastBrace + 1);
+    }
+    
+    content = content.trim();
+
+    return JSON.parse(content);
+  } catch (err: any) {
+    logger.error('[-] Error generating sentence analysis:', err.message);
     return {};
   }
 }
 
 // Hàm bóc chữ sử dụng OpenAI Whisper Cloud API + ChatGPT cho từ điển
-export async function transcribeWithOpenAI(baseName: string, lang: string = 'en-US', whisperKey: string, openaiModel: string = 'gpt-4o-mini'): Promise<string> {
+export async function transcribeWithOpenAI(baseName: string, lang: string = 'en-US', whisperKey: string, openaiModel: string = 'gpt-4o-mini', customUrl?: string): Promise<string> {
   const folderPath = path.join(RECORDINGS_DIR, baseName);
   const wavPath = path.join(folderPath, 'audio.wav');
   const metaPath = path.join(folderPath, 'meta.json');
@@ -228,7 +378,7 @@ export async function transcribeWithOpenAI(baseName: string, lang: string = 'en-
     throw new Error(`File audio không tồn tại: ${wavPath}`);
   }
 
-  console.log(`[*] Running OpenAI Whisper Cloud Transcribe for ${baseName} (lang: ${lang})...`);
+  logger.info(`[*] Running OpenAI Whisper Cloud Transcribe for ${baseName} (lang: ${lang})...`);
   const fileBuffer = fs.readFileSync(wavPath);
   const audioBlob = new Blob([fileBuffer], { type: 'audio/wav' });
 
@@ -243,11 +393,13 @@ export async function transcribeWithOpenAI(baseName: string, lang: string = 'en-
     formData.append('language', langCode);
   }
 
-  const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+  const endpoint = customUrl ? `${customUrl.replace(/\/$/, '')}/audio/transcriptions` : 'https://api.openai.com/v1/audio/transcriptions';
+  const headers: any = {};
+  if (whisperKey) headers['Authorization'] = `Bearer ${whisperKey}`;
+
+  const response = await fetch(endpoint, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${whisperKey}`
-    },
+    headers,
     body: formData
   });
 
@@ -265,7 +417,7 @@ export async function transcribeWithOpenAI(baseName: string, lang: string = 'en-
   }));
 
   // Tạo từ điển EN-VI bằng ChatGPT model đã chọn
-  const dictionary = await generateDictionaryWithChatGPT(text, whisperKey, openaiModel);
+  const dictionary = await generateDictionaryWithChatGPT(text, whisperKey, openaiModel, customUrl);
 
   // Ghi trực tiếp tệp meta.json
   const stats = fs.statSync(wavPath);
@@ -283,7 +435,7 @@ export async function transcribeWithOpenAI(baseName: string, lang: string = 'en-
   };
   fs.writeFileSync(metaPath, JSON.stringify(metaOutput, null, 2), 'utf-8');
 
-  console.log(`[+] OpenAI Whisper + GPT-4o-mini finished successfully for ${baseName}`);
+  logger.info(`[+] OpenAI Whisper + GPT-4o-mini finished successfully for ${baseName}`);
   return text;
 }
 
@@ -299,13 +451,13 @@ export function preprocessAudioWithFFmpeg(baseName: string): Promise<boolean> {
       return;
     }
 
-    console.log(`[*] Preprocessing audio with FFmpeg (trim silence & normalize volume) for ${baseName}...`);
+    logger.info(`[*] Preprocessing audio with FFmpeg (trim silence & normalize volume) for ${baseName}...`);
     // Lệnh FFmpeg: cắt khoảng im lặng ở đầu (-45dB) và cuối (-45dB) + chuẩn hóa âm lượng EBU R128 (-16 LUFS)
     const ffmpegCmd = `ffmpeg -y -i "${wavPath}" -af "silenceremove=start_periods=1:start_duration=0.1:start_threshold=-45dB:stop_periods=1:stop_duration=0.1:stop_threshold=-45dB,loudnorm=I=-16:TP=-1.5:LRA=11" "${tempWavPath}"`;
 
     exec(ffmpegCmd, (error) => {
       if (error) {
-        console.warn(`[-] FFmpeg preprocessing warning (skipping): ${error.message}`);
+        logger.warn(`[-] FFmpeg preprocessing warning (skipping): ${error.message}`);
         if (fs.existsSync(tempWavPath)) fs.unlinkSync(tempWavPath);
         resolve(false);
         return;
@@ -314,7 +466,7 @@ export function preprocessAudioWithFFmpeg(baseName: string): Promise<boolean> {
       if (fs.existsSync(tempWavPath) && fs.statSync(tempWavPath).size > 1000) {
         fs.unlinkSync(wavPath);
         fs.renameSync(tempWavPath, wavPath);
-        console.log(`[+] FFmpeg audio normalization & silence trimming completed for ${baseName}`);
+        logger.info(`[+] FFmpeg audio normalization & silence trimming completed for ${baseName}`);
         resolve(true);
       } else {
         if (fs.existsSync(tempWavPath)) fs.unlinkSync(tempWavPath);
@@ -329,10 +481,25 @@ export async function dispatchTranscription(baseName: string, lang: string = 'en
   // 1. Tự động dùng FFmpeg làm sạch & cắt khoảng im lặng đầu/cuối trước khi gửi AI bóc chữ
   await preprocessAudioWithFFmpeg(baseName);
 
-  const { geminiKey, openaiKey, whisperKey, geminiModel, openaiModel, providerPreference = 'auto' } = options;
+  let { geminiKey, openaiKey, whisperKey, geminiModel, openaiModel, providerPreference = 'auto', customEndpointUrl, customEndpointKey, customEndpointModel } = options;
+
+  // Fallback to local settings file
+  const fileSettings = readSettings();
+  if (fileSettings) {
+    providerPreference = providerPreference && providerPreference !== 'auto' ? providerPreference : (fileSettings.ai.providerPreference || 'auto');
+    geminiKey = geminiKey || fileSettings.ai.gemini.apiKey;
+    geminiModel = geminiModel || fileSettings.ai.gemini.model;
+    openaiKey = openaiKey || fileSettings.ai.openai.apiKey;
+    whisperKey = whisperKey || fileSettings.ai.openai.whisperKey;
+    openaiModel = openaiModel || fileSettings.ai.openai.model;
+    customEndpointUrl = customEndpointUrl || fileSettings.ai.custom.endpointUrl;
+    customEndpointKey = customEndpointKey || fileSettings.ai.custom.apiKey;
+    customEndpointModel = customEndpointModel || fileSettings.ai.custom.model;
+  }
+
   const effectiveOpenAIKey = openaiKey || whisperKey;
 
-  console.log(`[*] AI Dispatcher processing ${baseName} (pref: ${providerPreference}, geminiModel: ${geminiModel || 'default'}, openaiModel: ${openaiModel || 'default'})...`);
+  logger.info(`[*] AI Dispatcher processing ${baseName} (pref: ${providerPreference}, geminiModel: ${geminiModel || 'default'}, openaiModel: ${openaiModel || 'default'})...`);
 
   if (providerPreference === 'gemini' && geminiKey) {
     return await transcribeWithGemini(baseName, lang, geminiKey, geminiModel);
@@ -344,6 +511,31 @@ export async function dispatchTranscription(baseName: string, lang: string = 'en
 
   if (providerPreference === 'local') {
     return await runPythonTranscribe(baseName, lang);
+  }
+
+  if (providerPreference === 'custom' && customEndpointUrl) {
+    try {
+      logger.info(`[*] Trying Custom Endpoint STT for ${baseName}...`);
+      return await transcribeWithOpenAI(baseName, lang, customEndpointKey, customEndpointModel, customEndpointUrl);
+    } catch (err: any) {
+      logger.warn(`[-] Custom STT failed, using Local STT + Custom LLM Dictionary...`);
+      // Fallback: Local STT -> Custom LLM
+      try {
+        const fullText = await runPythonTranscribe(baseName, lang);
+        if (fullText) {
+          const dict = await generateDictionaryWithChatGPT(fullText, customEndpointKey, customEndpointModel, customEndpointUrl);
+          const metaPath = path.join(RECORDINGS_DIR, baseName, 'meta.json');
+          if (fs.existsSync(metaPath)) {
+            const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+            meta.dictionary = dict;
+            fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf-8');
+          }
+        }
+        return fullText;
+      } catch (localErr: any) {
+        throw err;
+      }
+    }
   }
 
   // Chế độ Auto Detect: Ưu tiên Gemini -> OpenAI -> Local Fallback

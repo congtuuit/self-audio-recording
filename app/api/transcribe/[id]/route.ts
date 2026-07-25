@@ -12,7 +12,7 @@ export async function POST(
   try {
     const data = await req.json().catch(() => ({}));
     let lang = data.language;
-    const { whisperKey, openaiKey, geminiKey, geminiModel, openaiModel, providerPreference } = data;
+    const { whisperKey, openaiKey, geminiKey, geminiModel, openaiModel, providerPreference, customEndpointUrl, customEndpointKey, customEndpointModel } = data;
 
     if (!lang) {
       const folderPath = path.join(RECORDINGS_DIR, id);
@@ -28,7 +28,7 @@ export async function POST(
 
     console.log(`[*] Requesting AI manual transcription for ${id} (lang: ${lang})...`);
     const text = await dispatchTranscription(id, lang, {
-      geminiKey, openaiKey, whisperKey, geminiModel, openaiModel, providerPreference
+      geminiKey, openaiKey, whisperKey, geminiModel, openaiModel, providerPreference, customEndpointUrl, customEndpointKey, customEndpointModel
     });
 
     return NextResponse.json({ success: true, transcript: text }, {

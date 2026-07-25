@@ -10,6 +10,9 @@ recordings/*
 .env.local
 .env.*.local
 
+# Configuration (contains API keys)
+config/settings.json
+
 # Logs
 *.log
 npm-debug.log*

@@ -7,7 +7,7 @@ import { RECORDINGS_DIR, dispatchTranscription } from '../helper';
 export async function POST(req: Request) {
   try {
     const data = await req.json();
-    const { mediaBase64, mediaName, subtitleText, language, whisperKey, openaiKey, geminiKey, geminiModel, openaiModel, providerPreference } = data;
+    const { mediaBase64, mediaName, subtitleText, language, whisperKey, openaiKey, geminiKey, geminiModel, openaiModel, providerPreference, customEndpointUrl, customEndpointKey, customEndpointModel } = data;
 
     if (!mediaBase64 || !mediaName) {
       return NextResponse.json({ success: false, error: 'Thiếu file media hoặc tên tệp' }, { status: 400 });
@@ -86,7 +86,7 @@ export async function POST(req: Request) {
           if (!result.transcript_available) {
             console.log(`[*] Subtitle file not provided. Running STT for ${baseName}...`);
             await dispatchTranscription(baseName, language || 'en-US', {
-              geminiKey, openaiKey, whisperKey, geminiModel, openaiModel, providerPreference
+              geminiKey, openaiKey, whisperKey, geminiModel, openaiModel, providerPreference, customEndpointUrl, customEndpointKey, customEndpointModel
             });
           } else {
             console.log(`[+] File import completed successfully for ${baseName} with subtitles!`);

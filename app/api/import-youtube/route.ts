@@ -7,7 +7,7 @@ import { RECORDINGS_DIR, dispatchTranscription } from '../helper';
 export async function POST(req: Request) {
   try {
     const data = await req.json();
-    const { url, mode, language, whisperKey, openaiKey, geminiKey, geminiModel, openaiModel, providerPreference } = data;
+    const { url, mode, language, whisperKey, openaiKey, geminiKey, geminiModel, openaiModel, providerPreference, customEndpointUrl, customEndpointKey, customEndpointModel } = data;
 
     if (!url) {
       return NextResponse.json({ success: false, error: 'Thiếu link YouTube URL' }, { status: 400 });
@@ -85,7 +85,7 @@ export async function POST(req: Request) {
           if (!result.transcript_available) {
             console.log(`[*] YouTube subtitles not found. Running STT fallback for ${baseName}...`);
             await dispatchTranscription(baseName, language || 'en-US', {
-              geminiKey, openaiKey, whisperKey, geminiModel, openaiModel, providerPreference
+              geminiKey, openaiKey, whisperKey, geminiModel, openaiModel, providerPreference, customEndpointUrl, customEndpointKey, customEndpointModel
             });
           } else {
             console.log(`[+] YouTube import completed successfully for ${baseName} with captions!`);

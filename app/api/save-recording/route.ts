@@ -6,7 +6,7 @@ import { RECORDINGS_DIR, dispatchTranscription } from '../helper';
 export async function POST(req: Request) {
   try {
     const data = await req.json();
-    const { audioBase64, transcript, customName, language, whisperKey, openaiKey, geminiKey, geminiModel, openaiModel, providerPreference } = data;
+    const { audioBase64, transcript, customName, language, whisperKey, openaiKey, geminiKey, geminiModel, openaiModel, providerPreference, customEndpointUrl, customEndpointKey, customEndpointModel } = data;
 
     if (!audioBase64) {
       return NextResponse.json({ success: false, error: 'Thiếu dữ liệu audioBase64' }, { status: 400 });
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
       const runTranscribeTask = async () => {
         try {
           const text = await dispatchTranscription(baseName, language || 'en-US', {
-            geminiKey, openaiKey, whisperKey, geminiModel, openaiModel, providerPreference
+            geminiKey, openaiKey, whisperKey, geminiModel, openaiModel, providerPreference, customEndpointUrl, customEndpointKey, customEndpointModel
           });
           if (!text || text.includes('(Đang tự động xử lý transcript...)')) {
             if (fs.existsSync(metaPath)) {

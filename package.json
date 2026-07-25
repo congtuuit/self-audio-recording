@@ -4,8 +4,8 @@
   "description": "Premium AI Shadowing SaaS Studio for English Practice",
   "main": "server.js",
   "scripts": {
-    "start": "next start -p 3001",
-    "dev": "next dev -p 3001",
+    "start": "next start",
+    "dev": "next dev",
     "build": "next build"
   },
   "keywords": [
@@ -20,6 +20,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@tanstack/react-query": "^5.101.4",
     "framer-motion": "^11.1.7",
     "lucide-react": "^0.368.0",
     "next": "^14.2.16",

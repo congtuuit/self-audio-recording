@@ -1,5 +1,6 @@
 import React from 'react';
-import { Mic, Cpu, HardDrive, Settings, Globe, Sparkles } from 'lucide-react';
+import { Mic, Cpu, HardDrive, Settings, Globe, Sparkles, Languages } from 'lucide-react';
+import { useI18n } from '../context/I18nContext';
 
 interface HeaderProps {
   isRecording: boolean;
@@ -16,6 +17,8 @@ export const Header: React.FC<HeaderProps> = ({
   lang,
   setLang
 }) => {
+  const { t, language, setLanguage } = useI18n();
+
   return (
     <header className="flex items-center justify-between px-6 py-4 bg-card/40 border-b border-borderCustom backdrop-blur-md rounded-2xl">
       {/* Brand Logo & Name */}
@@ -25,9 +28,9 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
         <div>
           <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-1.5">
-            VoiceCraft AI <span className="text-xs px-2 py-0.5 rounded-full bg-accent/20 text-accent font-semibold">STUDIO</span>
+            {t('header.title')} <span className="text-xs px-2 py-0.5 rounded-full bg-accent/20 text-accent font-semibold">STUDIO</span>
           </h1>
-          <p className="text-xs text-textMuted">Premium AI Shadowing & Pronunciation Workspace</p>
+          <p className="text-xs text-textMuted">{t('header.appSlogan')}</p>
         </div>
       </div>
 
@@ -78,12 +81,28 @@ export const Header: React.FC<HeaderProps> = ({
           </select>
         </div>
 
+        {/* UI Language Toggle */}
+        <div className="flex items-center gap-1 px-1 py-1 rounded-lg bg-cardSecondary/50 border border-borderCustom text-[10px] font-bold uppercase">
+          <button
+            onClick={() => setLanguage('vi')}
+            className={`px-2 py-1 rounded ${language === 'vi' ? 'bg-accent text-white' : 'text-textMuted hover:text-white'}`}
+          >
+            VI
+          </button>
+          <button
+            onClick={() => setLanguage('en')}
+            className={`px-2 py-1 rounded ${language === 'en' ? 'bg-accent text-white' : 'text-textMuted hover:text-white'}`}
+          >
+            EN
+          </button>
+        </div>
+
         {/* User avatar & settings */}
         <div className="flex items-center gap-2 pl-2 border-l border-borderCustom">
           <button
             onClick={onOpenSettings}
             className="p-2 text-textSecondary hover:text-white rounded-lg hover:bg-cardSecondary transition-colors"
-            title="Settings"
+            title={t('header.settings')}
           >
             <Settings className="w-4 h-4" />
           </button>

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Header } from './Header';
 import { StatusBar } from './StatusBar';
 import { DashboardCards } from './Dashboard/DashboardCards';
@@ -10,6 +11,7 @@ import { useRecordings } from '../hooks/useRecordings';
 import { useAudioRecorder } from '../hooks/useAudioRecorder';
 import { Recording, VoicecraftSettings } from '../types';
 import { useDialog } from '../context/DialogContext';
+import { mapServerToClientSettings } from '../utils/settingsMapper';
 
 export const AppLayout: React.FC = () => {
   const { alert: showAlert, prompt: showPrompt } = useDialog();
@@ -39,7 +41,10 @@ export const AppLayout: React.FC = () => {
           openaiModel: parsed.openaiModel || 'gpt-4o-mini',
           sampleRate: parsed.sampleRate ? Number(parsed.sampleRate) : 44100,
           autoGain: parsed.autoGain !== undefined ? Boolean(parsed.autoGain) : true,
-          providerPreference: parsed.providerPreference || 'auto'
+          providerPreference: parsed.providerPreference || 'auto',
+          customEndpointUrl: parsed.customEndpointUrl || '',
+          customEndpointKey: parsed.customEndpointKey || '',
+          customEndpointModel: parsed.customEndpointModel || ''
         };
       }
     } catch (err) {}
@@ -51,6 +56,25 @@ export const AppLayout: React.FC = () => {
   });
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Use React Query for settings fetch
+  const { data: serverSettings } = useQuery<VoicecraftSettings>({
+    queryKey: ['settings'],
+    queryFn: async () => {
+      const res = await fetch('/api/settings');
+      if (!res.ok) throw new Error('Failed to fetch settings');
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Failed to load settings');
+      return mapServerToClientSettings(data.settings);
+    }
+  });
+
+  useEffect(() => {
+    if (serverSettings) {
+      localStorage.setItem('voicecraft_settings', JSON.stringify(serverSettings));
+      setSettings(serverSettings);
+    }
+  }, [serverSettings]);
 
   const {
     isRecording,

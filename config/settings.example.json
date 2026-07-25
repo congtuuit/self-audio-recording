@@ -1,0 +1,28 @@
+{
+  "$schema": "./settings.schema.json",
+  "comment": "Copy this file to settings.json and fill in your API keys. Do NOT commit settings.json!",
+  "ai": {
+    "providerPreference": "openai",
+    "openai": {
+      "apiKey": "",
+      "model": "gpt-4o-mini",
+      "whisperKey": ""
+    },
+    "gemini": {
+      "apiKey": "",
+      "model": "gemini-2.0-flash"
+    },
+    "custom": {
+      "endpointUrl": "",
+      "apiKey": "",
+      "model": ""
+    }
+  },
+  "audio": {
+    "sampleRate": 44100,
+    "autoGain": true
+  },
+  "ui": {
+    "language": "vi"
+  }
+}

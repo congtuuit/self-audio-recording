@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
-import { DialogProvider } from '../context/DialogContext';
+import { Providers } from './providers';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
@@ -16,11 +16,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="vi" className={`${inter.variable}`}>
-      <body className="bg-[#0B1020] text-white font-sans antialiased min-h-screen">
-        <DialogProvider>
+    <html lang="vi" className={`${inter.variable}`} suppressHydrationWarning>
+      <body className="bg-[#0B1020] text-white font-sans antialiased min-h-screen" suppressHydrationWarning>
+        <Providers>
           {children}
-        </DialogProvider>
+        </Providers>
       </body>
     </html>
   );

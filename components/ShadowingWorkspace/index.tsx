@@ -5,12 +5,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   RotateCcw, Volume2, Mic, X, BookOpen, Loader2, Play, Pause,
   Repeat, ArrowRight, Sparkles, Plus, Check, Copy, HelpCircle,
-  VolumeX, ChevronLeft, ChevronRight, Bookmark, Landmark, BrainCircuit
+  VolumeX, ChevronLeft, ChevronRight, Bookmark, Landmark, BrainCircuit, RefreshCw
 } from 'lucide-react';
 import { FeedbackPanel } from './FeedbackPanel';
 import { WaveformComparison } from './WaveformComparison';
 import { Recording } from '../../types';
 import { useDialog } from '../../context/DialogContext';
+import { useI18n } from '../../context/I18nContext';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface ShadowingWorkspaceProps {
   lesson: Recording;
@@ -89,44 +91,82 @@ const evaluatePronunciation = (originalWords: any[], spokenText: string) => {
 };
 
 // Heuristics for the AI Coach panel based on active sentence text
-const getAICoachContent = (sentenceText: string, lessonDict: any) => {
+const getAICoachContent = (sentenceText: string, lessonDict: any, sentenceAnalysis: Record<string, any> = {}) => {
   const text = sentenceText.trim();
   const lowerText = text.toLowerCase();
+  const cleanLower = lowerText.replace(/[\n]/g, ' ').replace(/\s+/g, ' ').trim();
 
-  let grammar = "Sử dụng cấu trúc câu trần thuật hoặc hội thoại cơ bản.";
-  if (lowerText.includes("want you to")) {
-    grammar = "Cấu trúc 'want someone to do something' (muốn ai đó làm gì) nhằm nhấn mạnh yêu cầu lịch sự, trực tiếp.";
-  } else if (lowerText.includes("believe that")) {
-    grammar = "Mệnh đề danh từ 'believe that + clause' đóng vai trò làm tân ngữ chỉ suy nghĩ hoặc niềm tin.";
-  } else if (lowerText.includes("more than")) {
-    grammar = "So sánh hơn 'more than' được áp dụng để nhấn mạnh mức độ vượt trội của một hành động hay sự việc.";
-  } else if (lowerText.includes("have to")) {
-    grammar = "Động từ khuyết thiếu 'have to + V' chỉ nghĩa vụ mang tính khách quan (bắt buộc bởi hoàn cảnh ngoài ý muốn).";
-  } else if (lowerText.includes("would like to")) {
-    grammar = "Cấu trúc 'would like to + V' bày tỏ mong muốn một cách trang trọng, lịch thiệp hơn 'want'.";
-  } else if (lowerText.includes("if you've")) {
-    grammar = "Câu điều kiện hỗn hợp hoặc Loại 1 kết hợp thì Hiện tại hoàn thành để diễn đạt trải nghiệm cá nhân.";
-  } else if (lowerText.includes("did not")) {
-    grammar = "Phủ định ở thì Quá khứ đơn 'did not + V (nguyên thể)' chỉ một sự kiện đã chấm dứt hoàn toàn trong quá khứ.";
+  let matchedAnalysis = null;
+  const analysisArray = sentenceAnalysis.sentences || [];
+  for (const item of analysisArray) {
+    const k = (item.english || '').toLowerCase().trim();
+    if (k && (cleanLower.startsWith(k.substring(0, 20)) || k.startsWith(cleanLower.substring(0, 20)))) {
+      matchedAnalysis = item;
+      break;
+    }
   }
 
-  const linkings: string[] = [];
-  if (lowerText.includes("find out")) linkings.push("find out -> Nối phụ âm /d/ sang nguyên âm /aʊ/ thành /faɪn-daʊt/.");
-  if (lowerText.includes("want you")) linkings.push("want you -> Nối biến âm /t/ + /j/ thành âm /tʃ/ -> /wɑːn-tʃuː/.");
-  if (lowerText.includes("would like")) linkings.push("would like -> Nuốt âm chặn /d/ ở 'would', chỉ chuẩn bị khẩu hình và phát âm 'like'.");
-  if (lowerText.includes("of course")) linkings.push("of course -> Âm /f/ đọc nhẹ là /v/ rồi nối âm -> /əv-kɔːrs/.");
-  if (lowerText.includes("have a")) linkings.push("have a -> Nối âm /v/ sang nguyên âm /ə/ thành /hæ-və/.");
-  if (lowerText.includes("stress is")) linkings.push("stress is -> Nối âm xát /s/ sang nguyên âm /ɪ/ thành /stres-ɪz/.");
+  let grammar = matchedAnalysis?.grammar || "Sử dụng cấu trúc câu trần thuật hoặc hội thoại cơ bản.";
+  if (!matchedAnalysis) {
+    if (lowerText.includes("want you to")) {
+      grammar = "Cấu trúc 'want someone to do something' (muốn ai đó làm gì) nhằm nhấn mạnh yêu cầu lịch sự, trực tiếp.";
+    } else if (lowerText.includes("believe that")) {
+      grammar = "Mệnh đề danh từ 'believe that + clause' đóng vai trò làm tân ngữ chỉ suy nghĩ hoặc niềm tin.";
+    } else if (lowerText.includes("more than")) {
+      grammar = "So sánh hơn 'more than' được áp dụng để nhấn mạnh mức độ vượt trội của một hành động hay sự việc.";
+    } else if (lowerText.includes("have to")) {
+      grammar = "Động từ khuyết thiếu 'have to + V' chỉ nghĩa vụ mang tính khách quan (bắt buộc bởi hoàn cảnh ngoài ý muốn).";
+    } else if (lowerText.includes("would like to")) {
+      grammar = "Cấu trúc 'would like to + V' bày tỏ mong muốn một cách trang trọng, lịch thiệp hơn 'want'.";
+    } else if (lowerText.includes("if you've")) {
+      grammar = "Câu điều kiện hỗn hợp hoặc Loại 1 kết hợp thì Hiện tại hoàn thành để diễn đạt trải nghiệm cá nhân.";
+    } else if (lowerText.includes("did not")) {
+      grammar = "Phủ định ở thì Quá khứ đơn 'did not + V (nguyên thể)' chỉ một sự kiện đã chấm dứt hoàn toàn trong quá khứ.";
+    }
+  }
 
-  let shadowing = "Hạ giọng ở cuối câu để tạo ngữ điệu tự nhiên. Ngắt nghỉ nhẹ trước các liên từ như and, but, because.";
-  if (text.endsWith("?")) {
-    shadowing = "Câu hỏi Yes/No: Lên giọng ở cuối câu. Câu hỏi WH-: Hạ giọng ở cuối câu.";
-  } else if (lowerText.includes("laughter") || text.includes("(")) {
-    shadowing = "Lưu ý ngữ điệu kể chuyện dí dỏm: tăng tốc nhẹ ở các từ đệm và dừng khoảng 1 giây sau câu đùa.";
+  const linkings: string[] = matchedAnalysis?.linkings || [];
+  if (!matchedAnalysis) {
+    if (lowerText.includes("find out")) linkings.push("find out -> Nối phụ âm /d/ sang nguyên âm /aʊ/ thành /faɪn-daʊt/.");
+    if (lowerText.includes("want you")) linkings.push("want you -> Nối biến âm /t/ + /j/ thành âm /tʃ/ -> /wɑːn-tʃuː/.");
+    if (lowerText.includes("would like")) linkings.push("would like -> Nuốt âm chặn /d/ ở 'would', chỉ chuẩn bị khẩu hình và phát âm 'like'.");
+    if (lowerText.includes("of course")) linkings.push("of course -> Âm /f/ đọc nhẹ là /v/ rồi nối âm -> /əv-kɔːrs/.");
+    if (lowerText.includes("have a")) linkings.push("have a -> Nối âm /v/ sang nguyên âm /ə/ thành /hæ-və/.");
+    if (lowerText.includes("stress is")) linkings.push("stress is -> Nối âm xát /s/ sang nguyên âm /ɪ/ thành /stres-ɪz/.");
+  }
+
+  let shadowing = matchedAnalysis?.shadowing || "Hạ giọng ở cuối câu để tạo ngữ điệu tự nhiên. Ngắt nghỉ nhẹ trước các liên từ như and, but, because.";
+  if (!matchedAnalysis) {
+    if (text.endsWith("?")) {
+      shadowing = "Câu hỏi Yes/No: Lên giọng ở cuối câu. Câu hỏi WH-: Hạ giọng ở cuối câu.";
+    } else if (lowerText.includes("laughter") || text.includes("(")) {
+      shadowing = "Lưu ý ngữ điệu kể chuyện dí dỏm: tăng tốc nhẹ ở các từ đệm và dừng khoảng 1 giây sau câu đùa.";
+    }
+  }
+
+  let translation = matchedAnalysis?.translation || "Đang chuẩn bị bản dịch tiếng Việt...";
+  if (!matchedAnalysis) {
+    const transMap: Record<string, string> = {
+      "i have a confession to make.": "Tôi có một lời thú nhận muốn gửi tới các bạn.",
+      "but first, i want you to make a little confession to me.": "Nhưng trước tiên, tôi muốn các bạn cũng thú nhận với tôi một chút.",
+      "in the past year, i want you to just raise your hand if you've experienced relatively little stress.": "Trong năm vừa qua, tôi muốn các bạn hãy giơ tay nếu bạn chỉ trải qua rất ít sự căng thẳng.",
+      "anyone?": "Có ai không?",
+      "how about a moderate amount of stress?": "Thế còn lượng áp lực vừa phải thì sao?",
+      "who has experienced a lot of stress?": "Ai đã trải qua nhiều sự căng thẳng?",
+      "yeah. me too. but that is not my confession.": "Vâng, tôi cũng vậy. Nhưng đó không phải lời thú nhận của tôi.",
+      "my confession is this: i am a health psychologist, and my mission is to help people be happier and healthier.": "Lời thú nhận của tôi là thế này: Tôi là một nhà tâm lý học sức khỏe, và sứ mệnh của tôi là giúp mọi người sống hạnh phúc và khỏe mạnh hơn.",
+      "but i fear that something i've been teaching for the last 10 years is doing more harm than good, and it has to do with stress.": "Nhưng tôi e sợ rằng những gì mình giảng dạy suốt 10 năm qua đang mang lại nhiều tác hại hơn là lợi ích, và nó có liên quan mật thiết đến sự căng thẳng."
+    };
+    for (const [k, v] of Object.entries(transMap)) {
+      if (cleanLower.startsWith(k.substring(0, 20)) || k.startsWith(cleanLower.substring(0, 20))) {
+        translation = v;
+        break;
+      }
+    }
   }
 
   const vocab: any[] = [];
-  const words = lowerText.replace(/[^a-z\s]/g, '').split(/\s+/);
+  const words = cleanLower.replace(/[^a-z\s]/g, '').split(/\s+/);
   const seen = new Set();
 
   for (const w of words) {
@@ -153,29 +193,10 @@ const getAICoachContent = (sentenceText: string, lessonDict: any) => {
     }
   }
 
-  let translation = "Đang chuẩn bị bản dịch tiếng Việt...";
-  const transMap: Record<string, string> = {
-    "i have a confession to make.": "Tôi có một lời thú nhận muốn gửi tới các bạn.",
-    "but first, i want you to make a little confession to me.": "Nhưng trước tiên, tôi muốn các bạn cũng thú nhận với tôi một chút.",
-    "in the past year, i want you to just raise your hand if you've experienced relatively little stress.": "Trong năm vừa qua, tôi muốn các bạn hãy giơ tay nếu bạn chỉ trải qua rất ít sự căng thẳng.",
-    "anyone?": "Có ai không?",
-    "how about a moderate amount of stress?": "Thế còn lượng áp lực vừa phải thì sao?",
-    "who has experienced a lot of stress?": "Ai đã trải qua nhiều sự căng thẳng?",
-    "yeah. me too. but that is not my confession.": "Vâng, tôi cũng vậy. Nhưng đó không phải lời thú nhận của tôi.",
-    "my confession is this: i am a health psychologist, and my mission is to help people be happier and healthier.": "Lời thú nhận của tôi là thế này: Tôi là một nhà tâm lý học sức khỏe, và sứ mệnh của tôi là giúp mọi người sống hạnh phúc và khỏe mạnh hơn.",
-    "but i fear that something i've been teaching for the last 10 years is doing more harm than good, and it has to do with stress.": "Nhưng tôi e sợ rằng những gì mình giảng dạy suốt 10 năm qua đang mang lại nhiều tác hại hơn là lợi ích, và nó có liên quan mật thiết đến sự căng thẳng."
-  };
-
-  const cleanLower = lowerText.replace(/[\n]/g, ' ').replace(/\s+/g, ' ').trim();
-  for (const [k, v] of Object.entries(transMap)) {
-    if (cleanLower.startsWith(k.substring(0, 20)) || k.startsWith(cleanLower.substring(0, 20))) {
-      translation = v;
-      break;
-    }
-  }
-
   return { translation, grammar, linkings, shadowing, vocab };
 };
+
+const inFlightAudioFetches = new Map<string, Promise<Blob>>();
 
 export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
   lesson,
@@ -183,6 +204,7 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
   reTranscribe
 }) => {
   const { alert: showAlert, confirm: showConfirm } = useDialog();
+  const { t } = useI18n();
   const [currentTime, setCurrentTime] = useState(0);
   const [speed, setSpeed] = useState(1.0);
 
@@ -246,6 +268,28 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
   const transcriptContainerRef = useRef<HTMLDivElement | null>(null);
 
   const speedRef = useRef(speed);
+  // Sentence analysis state
+  const [sentenceAnalysis, setSentenceAnalysis] = useState<Record<string, any>>(lesson.sentenceAnalysis || { sentences: [] });
+  const [isAnalyzingSentences, setIsAnalyzingSentences] = useState(false);
+  const queryClient = useQueryClient();
+  const analyzingLessonIdRef = useRef<string | null>(null); // Track active request
+  const analysisFetchedRef = useRef<Set<string>>(new Set());
+
+
+
+  // Refs for high-frequency audio polling
+  const isLoopActiveRef = useRef(isLoopActive);
+  const loopRangeRef = useRef(loopRange);
+  const isSentenceLoopActiveRef = useRef(isSentenceLoopActive);
+  const isAutoPauseActiveRef = useRef(isAutoPauseActive);
+  const hasAutoPausedRef = useRef(hasAutoPaused);
+
+  useEffect(() => { isLoopActiveRef.current = isLoopActive; }, [isLoopActive]);
+  useEffect(() => { loopRangeRef.current = loopRange; }, [loopRange]);
+  useEffect(() => { isSentenceLoopActiveRef.current = isSentenceLoopActive; }, [isSentenceLoopActive]);
+  useEffect(() => { isAutoPauseActiveRef.current = isAutoPauseActive; }, [isAutoPauseActive]);
+  useEffect(() => { hasAutoPausedRef.current = hasAutoPaused; }, [hasAutoPaused]);
+
   useEffect(() => {
     speedRef.current = speed;
   }, [speed]);
@@ -309,10 +353,6 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
     const audio = audioRef.current;
     if (!audio) return;
 
-    audio.src = lesson.hasVideo
-      ? `/recordings/${lesson.id}/video.mp4`
-      : `/recordings/${lesson.filename}`;
-    audio.load();
     setCurrentTime(0);
     setUserAttempted(false);
     setIsUserRecording(false);
@@ -328,12 +368,59 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
     setHasAutoPaused(null);
     audio.playbackRate = speedRef.current;
 
-    // Load peaks from original audio file
-    decodeAudioAndGetPeaks(`/recordings/${lesson.filename}`, true);
+    let active = true;
+    let audioObjectUrl: string | null = null;
+
+    const loadSource = async () => {
+      try {
+        const audioUrl = `/recordings/${lesson.filename}`;
+
+        // Fetch audio file once (coalesced via inFlightAudioFetches map)
+        let fetchPromise = inFlightAudioFetches.get(lesson.filename);
+        if (!fetchPromise) {
+          fetchPromise = fetch(audioUrl)
+            .then(res => {
+              if (!res.ok) throw new Error('Failed to fetch audio file');
+              return res.blob();
+            })
+            .finally(() => {
+              inFlightAudioFetches.delete(lesson.filename);
+            });
+          inFlightAudioFetches.set(lesson.filename, fetchPromise);
+        }
+
+        const blob = await fetchPromise;
+        if (!active) return;
+
+        // 1. Decode peaks directly using the fetched Blob (0 network requests!)
+        decodeAudioAndGetPeaks(blob, true);
+
+        // 2. Set player source
+        if (lesson.hasVideo) {
+          audio.src = `/recordings/${lesson.id}/video.mp4`;
+        } else {
+          // For audio-only lessons, use Object URL to reuse the fetched Blob
+          audioObjectUrl = URL.createObjectURL(blob);
+          audio.src = audioObjectUrl;
+        }
+        audio.load();
+      } catch (err) {
+        console.error('Error loading audio source:', err);
+        // Fallback on error
+        if (active) {
+          audio.src = lesson.hasVideo
+            ? `/recordings/${lesson.id}/video.mp4`
+            : `/recordings/${lesson.filename}`;
+          audio.load();
+          decodeAudioAndGetPeaks(`/recordings/${lesson.filename}`, true);
+        }
+      }
+    };
+
+    loadSource();
 
     const handleTimeUpdate = () => {
       setCurrentTime(audio.currentTime);
-      syncKaraokeHighlight(audio.currentTime);
     };
 
     const handlePlay = () => setIsPlaying(true);
@@ -344,6 +431,10 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
     audio.addEventListener('pause', handlePause);
 
     return () => {
+      active = false;
+      if (audioObjectUrl) {
+        URL.revokeObjectURL(audioObjectUrl);
+      }
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('play', handlePlay);
       audio.removeEventListener('pause', handlePause);
@@ -352,6 +443,7 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
 
   useEffect(() => {
     const audio = audioRef.current;
+    speedRef.current = speed;
     if (!audio) return;
     audio.playbackRate = speed;
   }, [speed]);
@@ -381,6 +473,116 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
     return sentences.find(s => s.id === activeSentenceId) || null;
   }, [sentences, activeSentenceId]);
 
+  // Sync sentenceAnalysis state when lesson changes
+  useEffect(() => {
+    setSentenceAnalysis(lesson.sentenceAnalysis || { sentences: [] });
+  }, [lesson.id, lesson.sentenceAnalysis]);
+
+  // One-time full-lesson analysis on load (if not already analyzed)
+  useEffect(() => {
+    if (sentenceAnalysis.sentences && sentenceAnalysis.sentences.length > 0) {
+      return;
+    }
+
+    if (sentences.length === 0) return;
+
+    // Prevent duplicate active requests for the same lesson
+    if (analyzingLessonIdRef.current === lesson.id) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const signal = controller.signal;
+    let pollTimeoutId: any = null;
+
+    const triggerFullLessonAnalysis = async () => {
+      analyzingLessonIdRef.current = lesson.id;
+      setIsAnalyzingSentences(true);
+      try {
+        const stored = localStorage.getItem('voicecraft_settings');
+        let apiKey = '';
+        let modelName = '';
+        let customUrl = '';
+        let provider = 'auto';
+
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          provider = parsed.providerPreference || 'auto';
+          customUrl = parsed.customEndpointUrl || '';
+          if (provider === 'gemini') {
+            apiKey = parsed.geminiKey || '';
+            modelName = parsed.geminiModel || '';
+          } else if (provider === 'custom') {
+            apiKey = parsed.customEndpointKey || '';
+            modelName = parsed.customEndpointModel || '';
+          } else {
+            apiKey = parsed.openaiKey || parsed.whisperKey || '';
+            modelName = parsed.openaiModel || 'gpt-4o-mini';
+          }
+        }
+
+        const res = await fetch('/api/analyze-lesson', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: lesson.id,
+            apiKey,
+            modelName,
+            customUrl,
+            provider,
+            sentences: sentences.map(s => s.text)
+          }),
+          signal // Pass abort signal to fetch
+        });
+
+        const data = await res.json();
+
+        if (data.sentenceAnalysis && !signal.aborted) {
+          setSentenceAnalysis(data.sentenceAnalysis);
+        }
+
+        if (data.status === 'processing' && !signal.aborted) {
+          // If still processing, poll again in 3 seconds
+          pollTimeoutId = setTimeout(() => {
+            triggerFullLessonAnalysis();
+          }, 3000);
+        } else {
+          // Done, errored, or completed
+          setIsAnalyzingSentences(false);
+          if (data.status === 'completed') {
+            // Invalidate the recordings query so the cache is updated with the completed sentenceAnalysis
+            queryClient.invalidateQueries({ queryKey: ['recordings'] });
+          }
+        }
+      } catch (err: any) {
+        if (err.name === 'AbortError') {
+          console.log('[Analyze] Fetch aborted.');
+          return;
+        }
+        console.error('Error fetching full lesson analysis:', err);
+        // Clear lock on failure so it can be retried
+        analyzingLessonIdRef.current = null;
+        setIsAnalyzingSentences(false);
+      }
+    };
+
+    triggerFullLessonAnalysis();
+
+    // Cleanup: Abort outstanding requests and clear timeouts when switching lessons or unmounting
+    return () => {
+      controller.abort();
+      if (pollTimeoutId) {
+        clearTimeout(pollTimeoutId);
+      }
+    };
+  }, [lesson.id, sentences]);
+
+  const currentSentenceRef = useRef(currentSentence);
+  useEffect(() => { currentSentenceRef.current = currentSentence; }, [currentSentence]);
+
+  // Derived coach content based on active sentence
+  const coachData = currentSentence ? getAICoachContent(currentSentence.text, lesson.dictionary, sentenceAnalysis) : null;
+
   // Auto-scroll logic
   useEffect(() => {
     if (!activeSentenceId || isUserHovering) return;
@@ -402,39 +604,46 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
     }
   }, [activeSentenceId, isUserHovering]);
 
-  // Loop & auto-pause sync
-  const syncKaraokeHighlight = (time: number) => {
-    // 1. Auto-pause logic
-    if (isAutoPauseActive && activeSentence && hasAutoPaused !== activeSentence.id) {
-      // Pause slightly before the actual sentence end for clean break
-      if (time >= activeSentence.end - 0.12 && audioRef.current && !audioRef.current.paused) {
-        audioRef.current.pause();
-        audioRef.current.currentTime = activeSentence.end - 0.05;
-        setHasAutoPaused(activeSentence.id);
-        return;
-      }
-    }
+  // High-frequency polling for loops & auto-pause
+  useEffect(() => {
+    let animationFrameId: number;
+    const checkAudioTime = () => {
+      const audio = audioRef.current;
+      if (audio && !audio.paused) {
+        const time = audio.currentTime;
 
+        // 1. Word loop logic (Highest Priority)
+        if (isLoopActiveRef.current && loopRangeRef.current) {
+          if (time >= loopRangeRef.current.end - 0.02) {
+            audio.currentTime = loopRangeRef.current.start;
+          }
+        }
+        // 2. Auto-pause logic
+        else if (isAutoPauseActiveRef.current && currentSentenceRef.current && hasAutoPausedRef.current !== currentSentenceRef.current.id) {
+          if (time >= currentSentenceRef.current.end - 0.02) {
+            audio.pause();
+            setHasAutoPaused(currentSentenceRef.current.id);
+          }
+        }
+        // 3. Sentence loop logic
+        else if (isSentenceLoopActiveRef.current && currentSentenceRef.current) {
+          if (time >= currentSentenceRef.current.end - 0.02) {
+            audio.currentTime = currentSentenceRef.current.start;
+          }
+        }
+      }
+      animationFrameId = requestAnimationFrame(checkAudioTime);
+    };
+    animationFrameId = requestAnimationFrame(checkAudioTime);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, []);
+
+  useEffect(() => {
     // Reset auto-paused trigger if we move into a new segment range
-    if (activeSentence && hasAutoPaused === activeSentence.id && time < activeSentence.start) {
+    if (activeSentence && hasAutoPaused === activeSentence.id && currentTime < activeSentence.start) {
       setHasAutoPaused(null);
     }
-
-    // 2. Sentence loop logic
-    if (isSentenceLoopActive && currentSentence && audioRef.current) {
-      if (time >= currentSentence.end - 0.05) {
-        audioRef.current.currentTime = currentSentence.start;
-        return;
-      }
-    }
-
-    // 3. Word loop logic
-    if (isLoopActive && loopRange && audioRef.current) {
-      if (time >= loopRange.end - 0.02) {
-        audioRef.current.currentTime = loopRange.start;
-      }
-    }
-  };
+  }, [currentTime, activeSentence, hasAutoPaused]);
 
   // Click-to-seek
   const handleWordClick = (start: number) => {
@@ -679,11 +888,11 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
       const cleanQuery = userText.toLowerCase();
 
       if (cleanQuery.includes('dịch') || cleanQuery.includes('nghĩa')) {
-        coachResponse += `Cả câu này dịch nghĩa là: "${getAICoachContent(currentSentence.text, lesson.dictionary).translation}".`;
+        coachResponse += `Cả câu này dịch nghĩa là: "${getAICoachContent(currentSentence.text, lesson.dictionary, sentenceAnalysis).translation}".`;
       } else if (cleanQuery.includes('phát âm') || cleanQuery.includes('đọc')) {
-        coachResponse += `Về phát âm, câu này có các từ quan trọng cần nhấn trọng âm là: ${currentSentence.words.slice(0, 3).map(w => w.word).join(', ')}. Hãy chú ý các nối âm liaisons như: ${getAICoachContent(currentSentence.text, lesson.dictionary).linkings.join(' hoặc ')}.`;
+        coachResponse += `Về phát âm, câu này có các từ quan trọng cần nhấn trọng âm là: ${currentSentence.words.slice(0, 3).map(w => w.word).join(', ')}. Hãy chú ý các nối âm liaisons như: ${getAICoachContent(currentSentence.text, lesson.dictionary, sentenceAnalysis).linkings.join(' hoặc ')}.`;
       } else if (cleanQuery.includes('ngữ pháp') || cleanQuery.includes('cấu trúc')) {
-        coachResponse += `Về ngữ pháp: ${getAICoachContent(currentSentence.text, lesson.dictionary).grammar}`;
+        coachResponse += `Về ngữ pháp: ${getAICoachContent(currentSentence.text, lesson.dictionary, sentenceAnalysis).grammar}`;
       } else {
         coachResponse += `Trong ngữ cảnh này, bạn hãy chú ý cách ngắt nhịp (intonation) sau các từ khóa quan trọng và rèn luyện Shadowing ở tốc độ 1.0x để bắt kịp tốc độ nói tự nhiên của người bản xứ.`;
       }
@@ -699,8 +908,8 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
   // AI Content for right coach panel
   const coachContent = useMemo(() => {
     if (!currentSentence) return null;
-    return getAICoachContent(currentSentence.text, lesson.dictionary);
-  }, [currentSentence, lesson.dictionary]);
+    return getAICoachContent(currentSentence.text, lesson.dictionary, sentenceAnalysis);
+  }, [currentSentence, lesson.dictionary, sentenceAnalysis]);
 
   // Overall progress
   const progressPercent = useMemo(() => {
@@ -714,17 +923,17 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
       <div className="flex items-start justify-between pb-4 border-b border-borderCustom">
         <div>
           <h2 className="text-3xl font-bold tracking-tight text-white flex items-center gap-2">
-            🎓 Shadowing Workspace Studio
+            🎓 {t('workspace.studioTitle')}
           </h2>
           <p className="text-xs text-textMuted mt-1">
-            Chương trình học: <span className="text-accent font-semibold">{lesson.id}</span>
+            {t('workspace.course')}: <span className="text-accent font-semibold">{lesson.videoTitle || lesson.id}</span>
           </p>
         </div>
         <button
           onClick={onClose}
           className="px-3.5 py-1.5 rounded-lg bg-cardSecondary hover:bg-cardSecondary/80 border border-borderCustom text-sm font-semibold text-danger flex items-center gap-1.5 transition-colors"
         >
-          <X className="w-4 h-4" /> Đóng Studio
+          <X className="w-4 h-4" /> {t('workspace.close')}
         </button>
       </div>
 
@@ -735,8 +944,8 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
           {/* Progress Banner */}
           <div className="p-4 rounded-xl bg-card border border-borderCustom flex flex-col gap-2">
             <div className="flex justify-between items-center text-xs font-bold text-textSecondary uppercase tracking-wider">
-              <span>Đang học: Câu {currentSentence?.id || 1} / {sentences.length}</span>
-              <span className="text-accent">{progressPercent}% Hoàn thành</span>
+              <span>{t('workspace.learning')}: {currentSentence?.id || 1} / {sentences.length}</span>
+              <span className="text-accent">{progressPercent}% {t('workspace.completed')}</span>
             </div>
             <div className="w-full h-2 bg-cardSecondary rounded-full overflow-hidden border border-borderCustom">
               <motion.div
@@ -901,11 +1110,11 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
                 {dictCache[hoveredWordInfo.cleanWord]?.loading ? (
                   <div className="text-[10px] text-textMuted flex items-center gap-1.5 py-1">
                     <span className="w-2 h-2 rounded-full bg-accent animate-ping"></span>
-                    Đang tra IPA & từ điển...
+                    {t('workspace.loadingDict')}
                   </div>
                 ) : (
                   <p className="text-[11px] text-textSecondary leading-snug">
-                    {dictCache[hoveredWordInfo.cleanWord]?.meaning || 'Không tìm thấy định nghĩa'}
+                    {dictCache[hoveredWordInfo.cleanWord]?.meaning || t('workspace.noDefinition')}
                   </p>
                 )}
               </motion.div>
@@ -921,7 +1130,7 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
               <Sparkles className="w-4 h-4 text-accent" /> AI Study Coach Panel
             </h3>
             <span className="text-[9px] px-2 py-0.5 rounded bg-accent/20 text-accent font-bold uppercase tracking-wider">
-              Real-time Context
+              {t('workspace.realtime')}
             </span>
           </div>
 
@@ -934,7 +1143,7 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
 
               {/* Translation section */}
               <div className="space-y-1">
-                <span className="font-bold text-accent uppercase tracking-wider text-[10px]">🇻🇳 Dịch nghĩa:</span>
+                <span className="font-bold text-accent uppercase tracking-wider text-[10px]">🇻🇳 {t('workspace.translation')}:</span>
                 <p className="text-white leading-relaxed font-semibold bg-accent/5 p-2 rounded-lg border border-accent/15">
                   {coachContent?.translation}
                 </p>
@@ -942,7 +1151,7 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
 
               {/* Grammar focus */}
               <div className="space-y-1">
-                <span className="font-bold text-success uppercase tracking-wider text-[10px]">📘 Ngữ pháp:</span>
+                <span className="font-bold text-success uppercase tracking-wider text-[10px]">📘 {t('workspace.grammar')}:</span>
                 <p className="text-textSecondary leading-relaxed bg-success/5 p-2 rounded-lg border border-success/15 font-semibold">
                   {coachContent?.grammar}
                 </p>
@@ -951,7 +1160,7 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
               {/* Pronunciation & linkings */}
               {coachContent?.linkings && coachContent.linkings.length > 0 && (
                 <div className="space-y-1">
-                  <span className="font-bold text-amber-500 uppercase tracking-wider text-[10px]">🗣️ Chú ý phát âm:</span>
+                  <span className="font-bold text-amber-500 uppercase tracking-wider text-[10px]">🗣️ {t('workspace.pronunciation')}:</span>
                   <div className="space-y-1 font-semibold bg-amber-500/5 p-2 rounded-lg border border-amber-500/15">
                     {coachContent.linkings.map((l, i) => (
                       <div key={i} className="text-textSecondary">• {l}</div>
@@ -971,7 +1180,7 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
               {/* Lesson Dictionary vocab items */}
               {coachContent?.vocab && coachContent.vocab.length > 0 && (
                 <div className="space-y-1.5 pt-1">
-                  <span className="font-bold text-textSecondary uppercase tracking-wider text-[10px]">📚 Từ vựng quan trọng:</span>
+                  <span className="font-bold text-textSecondary uppercase tracking-wider text-[10px]">📚 {t('workspace.vocab')}:</span>
                   <div className="grid grid-cols-1 gap-2">
                     {coachContent.vocab.map((v, i) => (
                       <div key={i} className="flex justify-between items-start p-2 rounded-lg bg-cardSecondary border border-borderCustom/60 font-semibold">
@@ -988,7 +1197,7 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
 
               {/* Interactive Coach Q&A Box */}
               <div className="pt-3 border-t border-borderCustom/60 space-y-3">
-                <span className="font-bold text-textSecondary uppercase tracking-wider text-[10px]">💬 Hỏi đáp với AI Coach:</span>
+                <span className="font-bold text-textSecondary uppercase tracking-wider text-[10px]">💬 {t('workspace.askAi')}:</span>
 
                 {/* Simulated chat thread */}
                 {aiChatHistory[currentSentence.id] && aiChatHistory[currentSentence.id].length > 0 && (
@@ -1075,7 +1284,7 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
                 onClick={handleStartUserRecording}
                 className="px-4 py-2 rounded-lg bg-danger text-white text-xs font-bold shadow-dangerGlow flex items-center gap-1.5 hover:bg-danger/90 transition-all"
               >
-                <span className="w-2 h-2 rounded-full bg-white opacity-85 animate-ping"></span> Shadow Mic
+                <span className="w-2 h-2 rounded-full bg-white opacity-85 animate-ping"></span> {t('workspace.shadowMic')}
               </button>
             ) : (
               <button
@@ -1157,10 +1366,10 @@ export const ShadowingWorkspace: React.FC<ShadowingWorkspaceProps> = ({
               >
                 <option value="0.5" className="bg-card text-white">0.5x 🐢</option>
                 <option value="0.75" className="bg-card text-white">0.75x</option>
-                <option value="1.0" className="bg-card text-white">1.0x ⚡</option>
+                <option value="1" className="bg-card text-white">1.0x ⚡</option>
                 <option value="1.25" className="bg-card text-white">1.25x</option>
                 <option value="1.5" className="bg-card text-white">1.5x 🏎️</option>
-                <option value="2.0" className="bg-card text-white">2.0x 🚀</option>
+                <option value="2" className="bg-card text-white">2.0x 🚀</option>
               </select>
             </div>
 

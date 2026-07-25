@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Recording } from '../types';
 
 export interface UseRecordingsReturn {
@@ -15,91 +16,46 @@ export interface UseRecordingsReturn {
 }
 
 export function useRecordings(): UseRecordingsReturn {
-  const [recordings, setRecordings] = useState<Recording[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
 
-  const pollIntervalRef = useRef<any>(null);
-
-  // Load danh sách bản ghi
-  const loadRecordings = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
+  // 1. Fetch & Poll Recordings using useQuery
+  const { data: recordings = [], isLoading, error: queryError } = useQuery<Recording[]>({
+    queryKey: ['recordings'],
+    queryFn: async () => {
       const response = await fetch('/api/recordings');
       const data = await response.json();
-
-      if (data.success) {
-        // Trộn thêm trạng thái favorite từ localStorage
-        const favorites = JSON.parse(localStorage.getItem('voicecraft_favorites') || '[]');
-        const updatedRecordings = (data.recordings || []).map((rec: Recording) => ({
-          ...rec,
-          isFavorite: favorites.includes(rec.id),
-          aiScore: rec.processing ? undefined : rec.aiScore
-        }));
-        setRecordings(updatedRecordings);
-      } else {
-        setError(data.error || 'Lỗi khi tải danh sách ghi âm');
+      if (!data.success) {
+        throw new Error(data.error || 'Lỗi khi tải danh sách ghi âm');
       }
-    } catch (err) {
-      setError('Không thể kết nối đến server API');
-    } finally {
-      setIsLoading(false);
+
+      const favorites = JSON.parse(localStorage.getItem('voicecraft_favorites') || '[]');
+      return (data.recordings || []).map((rec: Recording) => ({
+        ...rec,
+        isFavorite: favorites.includes(rec.id),
+        aiScore: rec.processing ? undefined : rec.aiScore
+      }));
+    },
+    // Dynamically poll every 3 seconds if any recording is processing
+    refetchInterval: (query) => {
+      const hasProcessing = query.state.data?.some(r => r.processing);
+      return hasProcessing ? 3000 : false;
     }
-  }, []);
+  });
 
-  // Polling check background transcription
+  // Sync query error with state
   useEffect(() => {
-    const hasProcessing = recordings.some(r => r.processing);
-
-    if (hasProcessing) {
-      if (!pollIntervalRef.current) {
-        pollIntervalRef.current = setInterval(async () => {
-          try {
-            const res = await fetch('/api/recordings');
-            const data = await res.json();
-            if (data.success) {
-              const stillProcessing = data.recordings.some((r: Recording) => r.processing);
-
-              // Cập nhật lại state
-              const favorites = JSON.parse(localStorage.getItem('voicecraft_favorites') || '[]');
-              setRecordings((data.recordings || []).map((rec: Recording) => {
-                return {
-                  ...rec,
-                  isFavorite: favorites.includes(rec.id),
-                  aiScore: rec.processing ? undefined : rec.aiScore
-                };
-              }));
-
-              if (!stillProcessing) {
-                if (pollIntervalRef.current) {
-                  clearInterval(pollIntervalRef.current);
-                  pollIntervalRef.current = null;
-                }
-              }
-            }
-          } catch (e) {}
-        }, 3000);
-      }
+    if (queryError) {
+      setError((queryError as Error).message);
     } else {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
-      }
+      setError(null);
     }
+  }, [queryError]);
 
-    return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
-      }
-    };
-  }, [recordings]);
-
-  // Gọi lần đầu
-  useEffect(() => {
-    loadRecordings();
-  }, [loadRecordings]);
+  // Expose loadRecordings using refetchQueries
+  const loadRecordings = useCallback(async () => {
+    await queryClient.refetchQueries({ queryKey: ['recordings'] });
+  }, [queryClient]);
 
   // Lưu bản ghi mới
   const saveRecording = async (wavBlob: Blob, transcript: string, customName: string, lang: string): Promise<Recording> => {
@@ -172,7 +128,7 @@ export function useRecordings(): UseRecordingsReturn {
       const data = await response.json();
 
       if (data.success) {
-        setRecordings(prev => prev.filter(rec => rec.id !== id));
+        await loadRecordings();
       } else {
         throw new Error(data.error || 'Xóa bản ghi thất bại');
       }
@@ -231,12 +187,15 @@ export function useRecordings(): UseRecordingsReturn {
     }
     localStorage.setItem('voicecraft_favorites', JSON.stringify(newFavorites));
 
-    setRecordings(prev => prev.map(rec => {
-      if (rec.id === id) {
-        return { ...rec, isFavorite: !rec.isFavorite };
-      }
-      return rec;
-    }));
+    queryClient.setQueryData<Recording[]>(['recordings'], (old) => {
+      if (!old) return [];
+      return old.map(rec => {
+        if (rec.id === id) {
+          return { ...rec, isFavorite: !rec.isFavorite };
+        }
+        return rec;
+      });
+    });
   };
 
   // Import từ YouTube

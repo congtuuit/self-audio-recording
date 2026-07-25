@@ -16,14 +16,18 @@ export async function GET() {
         const wavPath = path.join(dirPath, 'audio.wav');
         const metaPath = path.join(dirPath, 'meta.json');
 
-        if (fs.existsSync(wavPath)) {
-          const wavStats = fs.statSync(wavPath);
+        const hasWav = fs.existsSync(wavPath);
+        const hasMeta = fs.existsSync(metaPath);
+
+        if (hasWav || hasMeta) {
+          const wavStats = hasWav ? fs.statSync(wavPath) : null;
+          const metaStats = hasMeta ? fs.statSync(metaPath) : null;
           let transcript = '';
           let words = [];
           let dictionary = {};
           let duration = 0;
           let language = 'en-US';
-          let createdAt: Date | string = wavStats.birthtime || wavStats.mtime;
+          let createdAt: Date | string = wavStats ? (wavStats.birthtime || wavStats.mtime) : (metaStats ? (metaStats.birthtime || metaStats.mtime) : new Date());
           let aiScore = undefined;
           let source = 'recording';
           let sourceUrl = '';
@@ -31,8 +35,9 @@ export async function GET() {
           let videoChannel = '';
           let videoThumbnail = '';
           let hasVideo = false;
+          let sentenceAnalysis = { sentences: [] };
 
-          if (fs.existsSync(metaPath)) {
+          if (hasMeta) {
             try {
               const metaData = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
               transcript = metaData.fullText || '';
@@ -42,6 +47,7 @@ export async function GET() {
               if (metaData.createdAt) createdAt = new Date(metaData.createdAt);
               aiScore = metaData.aiScore;
               dictionary = metaData.dictionary || {};
+              sentenceAnalysis = metaData.sentenceAnalysis || { sentences: [] };
 
               source = metaData.source || 'recording';
               sourceUrl = metaData.sourceUrl || '';
@@ -60,7 +66,7 @@ export async function GET() {
             id: item,
             filename: `${item}/audio.wav`, // Trả về đường dẫn tương đối dạng thư mục/tệp
             txtFilename: `${item}/meta.json`,
-            size: wavStats.size,
+            size: wavStats ? wavStats.size : 0,
             createdAt: createdAt,
             transcript: transcript,
             words: words,
@@ -74,7 +80,8 @@ export async function GET() {
             videoChannel: videoChannel,
             videoThumbnail: videoThumbnail,
             hasVideo: hasVideo,
-            duration: duration
+            duration: duration,
+            sentenceAnalysis: sentenceAnalysis
           });
         }
       }
